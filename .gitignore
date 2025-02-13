@@ -1,0 +1,6 @@
+config.yaml
+__debug_bin*
+.vscode/launch.json
+.goreleaser.yaml.new
+.aider*
+validator-tools
