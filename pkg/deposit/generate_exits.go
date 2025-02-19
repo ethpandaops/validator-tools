@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -52,15 +55,21 @@ type ExitGenerator struct {
 	beaconURL             string
 	iterations            int
 	validatorStartIndex   int
+	numWorkers            int
+	totalKeystores        int
+	currentKeystore       int32
 }
 
-func NewExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, iterations, startIndex int) *ExitGenerator {
+func NewExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, iterations, startIndex, numWorkers int) *ExitGenerator {
 	log.Info("Creating new ExitGenerator")
 	log.Infof("Output dir: %s", outputDir)
 	log.Infof("Withdrawal creds: %s", withdrawalCreds)
 	log.Infof("Beacon URL: %s", beaconURL)
 	log.Infof("Iterations: %d", iterations)
-	log.Infof("Start index: %d", startIndex)
+	if startIndex >= 0 {
+		log.Infof("Start index: %d", startIndex)
+	}
+	log.Infof("Number of workers: %d", numWorkers)
 
 	return &ExitGenerator{
 		outputDir:             outputDir,
@@ -69,7 +78,16 @@ func NewExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, 
 		beaconURL:             beaconURL,
 		iterations:            iterations,
 		validatorStartIndex:   startIndex,
+		numWorkers:            numWorkers,
+		currentKeystore:       0,
+		totalKeystores:        0,
 	}
+}
+
+// SetTotalKeystores sets the total number of keystores to be processed
+func (g *ExitGenerator) SetTotalKeystores(total int) {
+	g.totalKeystores = total
+	log.Infof("Total keystores to process: %d", total)
 }
 
 func (g *ExitGenerator) fetchJSON(url string) ([]byte, error) {
@@ -225,9 +243,18 @@ func (g *ExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 	return config, nil
 }
 
+type exitTask struct {
+	validatorIndex int
+	pubkey         string
+	keystorePath   string
+}
+
 func (g *ExitGenerator) GenerateExits(keystorePath string, config *BeaconConfig, startIndex int) error {
+	atomic.AddInt32(&g.currentKeystore, 1)
+	keystoreNum := atomic.LoadInt32(&g.currentKeystore)
+
 	log.Info("Generating exits")
-	log.Infof("Keystore path: %s", keystorePath)
+	log.Infof("Processing keystore %d/%d: %s", keystoreNum, g.totalKeystores, keystorePath)
 	log.Infof("Start index: %d", startIndex)
 
 	// Get absolute path for keystore
@@ -260,69 +287,134 @@ func (g *ExitGenerator) GenerateExits(keystorePath string, config *BeaconConfig,
 	}
 	log.Infof("Pubkey: %s", keystoreJSON.Pubkey)
 
+	// Create task channel and worker pool
+	tasks := make(chan exitTask, g.iterations)
+	var wg sync.WaitGroup
+	errChan := make(chan error, g.numWorkers)
+
+	// Counter for completed exits
+	var completedExits uint64
+
+	// Start progress reporter
+	stopProgress := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				completed := atomic.LoadUint64(&completedExits)
+				log.Infof("Progress: Keystore %d/%d - %d/%d exits generated (%.1f%%)",
+					keystoreNum, g.totalKeystores,
+					completed, g.iterations,
+					float64(completed)*100/float64(g.iterations))
+			case <-stopProgress:
+				return
+			}
+		}
+	}()
+
+	// Start workers
+	for i := 0; i < g.numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			// Create temporary directory for this worker
+			tmpDir, err := os.MkdirTemp("", fmt.Sprintf("ethdo-worker-%d-", workerID))
+			if err != nil {
+				errChan <- errors.Wrapf(err, "worker %d failed to create temp directory", workerID)
+				return
+			}
+			defer os.RemoveAll(tmpDir)
+
+			workerLog := log.WithField("worker", workerID)
+			workerLog.Debugf("Worker started with temp dir: %s", tmpDir)
+
+			for task := range tasks {
+				workerLog.Debugf("Processing validator index %d", task.validatorIndex)
+
+				prepFile := PrepFile{
+					Version: "3",
+					Validators: []ValidatorInfo{
+						{
+							Index:                 strconv.Itoa(task.validatorIndex),
+							Pubkey:                task.pubkey,
+							State:                 "active_ongoing",
+							WithdrawalCredentials: g.withdrawalCredentials,
+						},
+					},
+					GenesisValidatorsRoot:      config.GenesisValidatorsRoot,
+					Epoch:                      config.Epoch,
+					GenesisVersion:             config.GenesisVersion,
+					ExitForkVersion:            config.ExitForkVersion,
+					CurrentForkVersion:         config.CurrentForkVersion,
+					BlsToExecutionChangeDomain: config.BlsToExecutionChangeDomain,
+					VoluntaryExitDomain:        config.VoluntaryExitDomain,
+				}
+
+				prepFilePath := filepath.Join(tmpDir, "offline-preparation.json")
+				prepFileData, err := json.MarshalIndent(prepFile, "", "  ")
+				if err != nil {
+					errChan <- errors.Wrapf(err, "worker %d failed to marshal preparation file for index %d",
+						workerID, task.validatorIndex)
+					return
+				}
+
+				if err := os.WriteFile(prepFilePath, prepFileData, 0644); err != nil {
+					errChan <- errors.Wrapf(err, "worker %d failed to write preparation file for index %d",
+						workerID, task.validatorIndex)
+					return
+				}
+
+				outFile := filepath.Join(g.outputDir, fmt.Sprintf("%d-%s.json", task.validatorIndex, task.pubkey))
+				if err := g.runEthdoCommand(task.keystorePath, outFile, tmpDir, workerLog); err != nil {
+					errChan <- errors.Wrapf(err, "worker %d failed to run ethdo for index %d",
+						workerID, task.validatorIndex)
+					return
+				}
+
+				atomic.AddUint64(&completedExits, 1)
+				workerLog.Debugf("Completed validator index %d", task.validatorIndex)
+			}
+		}(i)
+	}
+
+	// Send tasks to workers
+	log.Info("Sending tasks to workers")
 	for i := 1; i <= g.iterations; i++ {
-		log.Infof("Processing iteration %d/%d", i, g.iterations)
-
-		validatorIndex := startIndex + i
-		log.Infof("Validator index: %d", validatorIndex)
-
-		prepFile := PrepFile{
-			Version: "3",
-			Validators: []ValidatorInfo{
-				{
-					Index:                 strconv.Itoa(validatorIndex),
-					Pubkey:                keystoreJSON.Pubkey,
-					State:                 "active_ongoing",
-					WithdrawalCredentials: g.withdrawalCredentials,
-				},
-			},
-			GenesisValidatorsRoot:      config.GenesisValidatorsRoot,
-			Epoch:                      config.Epoch,
-			GenesisVersion:             config.GenesisVersion,
-			ExitForkVersion:            config.ExitForkVersion,
-			CurrentForkVersion:         config.CurrentForkVersion,
-			BlsToExecutionChangeDomain: config.BlsToExecutionChangeDomain,
-			VoluntaryExitDomain:        config.VoluntaryExitDomain,
-		}
-
-		prepFilePath := filepath.Join(g.outputDir, "offline-preparation.json")
-		log.Infof("Preparation file path: %s", prepFilePath)
-
-		prepFileData, err := json.MarshalIndent(prepFile, "", "  ")
-		if err != nil {
-			log.Errorf("Failed to marshal preparation file: %v", err)
-			return errors.Wrap(err, "failed to marshal preparation file")
-		}
-
-		if err := os.WriteFile(prepFilePath, prepFileData, 0644); err != nil {
-			log.Errorf("Failed to write preparation file: %v", err)
-			return errors.Wrap(err, "failed to write preparation file")
-		}
-
-		outFile := filepath.Join(g.outputDir, fmt.Sprintf("%d-%s.json", validatorIndex, keystoreJSON.Pubkey))
-		log.Infof("Output file: %s", outFile)
-
-		if err := g.runEthdoCommand(absKeystorePath, outFile); err != nil {
-			fmt.Println() // New line after progress
-			log.Errorf("Failed to run ethdo command: %v", err)
-			return err
-		}
-
-		if err := os.Remove(prepFilePath); err != nil {
-			log.Warnf("Failed to remove preparation file: %v", err)
-			fmt.Printf("\nWarning: Failed to remove preparation file: %v\n", err)
+		tasks <- exitTask{
+			validatorIndex: startIndex + i,
+			pubkey:         keystoreJSON.Pubkey,
+			keystorePath:   absKeystorePath,
 		}
 	}
-	fmt.Println() // New line after progress bar
-	log.Info("Exit generation completed successfully")
+	close(tasks)
 
+	// Wait for all workers to complete
+	log.Info("Waiting for workers to complete")
+	wg.Wait()
+	close(errChan)
+	close(stopProgress)
+
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			log.Error("Worker error encountered:", err)
+			return err
+		}
+	}
+
+	log.Infof("Exit generation completed for keystore %d/%d", keystoreNum, g.totalKeystores)
 	return nil
 }
 
-func (g *ExitGenerator) runEthdoCommand(keystorePath, outFile string) error {
-	log.Info("Running ethdo command")
-	log.Infof("Keystore path: %s", keystorePath)
-	log.Infof("Output file: %s", outFile)
+func (g *ExitGenerator) runEthdoCommand(keystorePath, outFile, workDir string, log *logrus.Entry) error {
+	log.Debug("Running ethdo command")
+	log.Debugf("Keystore path: %s", keystorePath)
+	log.Debugf("Output file: %s", outFile)
+	log.Debugf("Working directory: %s", workDir)
 
 	args := []string{
 		"validator", "exit",
@@ -340,27 +432,23 @@ func (g *ExitGenerator) runEthdoCommand(keystorePath, outFile string) error {
 			debugArgs[i] = "--passphrase=********"
 		}
 	}
-
-	fmt.Printf("\nExecuting command: ethdo %s\n", strings.Join(debugArgs, " "))
-	log.Infof("Executing command: ethdo %s", strings.Join(debugArgs, " "))
+	log.Debugf("Executing command: ethdo %s", strings.Join(debugArgs, " "))
 
 	cmd := NewCommand("ethdo", args)
-	cmd.Dir = g.outputDir
-	log.Infof("Working directory: %s", g.outputDir)
+	cmd.Dir = workDir
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Errorf("ethdo command failed: %v", err)
 		log.Errorf("Command output: %s", string(output))
-		return errors.Wrapf(err, "ethdo command failed for keystore: %s: %s",
-			keystorePath, string(output))
+		return errors.Wrapf(err, "ethdo command failed: %s", string(output))
 	}
 
 	if err := os.WriteFile(outFile, output, 0644); err != nil {
 		log.Errorf("Failed to write output file: %v", err)
 		return errors.Wrapf(err, "failed to write output file: %s", outFile)
 	}
-	log.Info("ethdo command completed successfully")
+	log.Debug("ethdo command completed successfully")
 
 	return nil
 }
