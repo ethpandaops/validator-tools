@@ -1,9 +1,8 @@
-package deposit
+package validator
 
 import (
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"os"
 
 	"github.com/pkg/errors"
@@ -42,7 +41,7 @@ type Deposit struct {
 	ForkVersion           string `json:"fork_version"`
 }
 
-func NewDepositData(path, expectedNetwork, expectedWithdrawalCred string, expectedAmount uint64, expectedCount int) (*Data, error) {
+func NewData(path, expectedNetwork, expectedWithdrawalCred string, expectedAmount uint64, expectedCount int) (*Data, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read deposit data file")
