@@ -33,20 +33,6 @@ builds:
       - -s -w -X github.com/ethpandaops/validator-tools/cmd/version.Release={{.Tag}} -X github.com/ethpandaops/validator-tools/cmd/version.GitCommit={{.ShortCommit}} -X github.com/ethpandaops/validator-tools/cmd/version.GOOS=linux -X github.com/ethpandaops/validator-tools/cmd/version.GOARCH=arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  - id: windows-amd64
-    env:
-      - CGO_ENABLED=1
-      - CC=x86_64-w64-mingw32-gcc
-      - CXX=x86_64-w64-mingw32-g++
-    binary: validator-tools-{{.Version}}
-    goos:
-    - windows
-    goarch:
-    - amd64
-    ldflags:
-      - -s -w -X github.com/ethpandaops/validator-tools/cmd/version.Release={{.Tag}} -X github.com/ethpandaops/validator-tools/cmd/version.GitCommit={{.ShortCommit}} -X github.com/ethpandaops/validator-tools/cmd/version.GOOS=windows -X github.com/ethpandaops/validator-tools/cmd/version.GOARCH=amd64
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
   - id: darwin-amd64
     env:
       - CGO_ENABLED=1
