@@ -18,21 +18,22 @@ type VoluntaryExitGenerator struct {
 	Passphrase            string
 	BeaconURL             string
 	Iterations            int
-	StartIndex            int
+	IndexStart            int
+	IndexOffset           int
 	NumWorkers            int
 	TotalKeystores        int32
 	CurrentKeystore       int32
 }
 
-func NewVoluntaryExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, iterations, startIndex, numWorkers int) *VoluntaryExitGenerator {
+func NewVoluntaryExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, iterations, indexStart, indexOffset, numWorkers int) *VoluntaryExitGenerator {
 	log.Info("Creating new Generator")
 	log.Infof("Output dir: %s", outputDir)
 	log.Infof("Withdrawal creds: %s", withdrawalCreds)
 	log.Infof("Beacon URL: %s", beaconURL)
 	log.Infof("Iterations: %d", iterations)
 
-	if startIndex >= 0 {
-		log.Infof("Start index: %d", startIndex)
+	if indexStart >= 0 {
+		log.Infof("Start index: %d", indexStart+indexOffset)
 	}
 
 	log.Infof("Number of workers: %d", numWorkers)
@@ -43,7 +44,8 @@ func NewVoluntaryExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL
 		Passphrase:            passphrase,
 		BeaconURL:             beaconURL,
 		Iterations:            iterations,
-		StartIndex:            startIndex,
+		IndexStart:            indexStart,
+		IndexOffset:           indexOffset,
 		NumWorkers:            numWorkers,
 		CurrentKeystore:       0,
 		TotalKeystores:        0,
@@ -71,8 +73,8 @@ func (g *VoluntaryExitGenerator) SetTotalKeystores(total int) {
 }
 
 func (g *VoluntaryExitGenerator) GetValidatorStartIndex() (int, error) {
-	if g.StartIndex >= 0 {
-		return g.StartIndex, nil
+	if g.IndexStart >= 0 {
+		return g.IndexStart + g.IndexOffset, nil
 	}
 
 	resp, err := g.FetchJSON(g.BeaconURL + "/eth/v1/beacon/states/head/validators")
@@ -107,7 +109,7 @@ func (g *VoluntaryExitGenerator) GetValidatorStartIndex() (int, error) {
 		return 0, errors.New("no valid validator indices found")
 	}
 
-	return maxIndex, nil
+	return maxIndex + g.IndexOffset, nil
 }
 
 func (g *VoluntaryExitGenerator) GenerateExits(keystorePath string, config *BeaconConfig, startIndex int) error {

@@ -136,60 +136,87 @@ func TestNewVoluntaryExits(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name             string
-		path             string
-		network          string
-		withdrawalCreds  string
-		numExits         int
-		expectError      bool
-		expectedPubkeys  int
-		expectedExitFile bool
+		name                string
+		path                string
+		network             string
+		withdrawalCreds     string
+		numExits            int
+		expectedPubkeys     []string
+		expectError         bool
+		expectedPubkeyCount int
+		expectedExitFile    bool
 	}{
 		{
-			name:             "valid exits",
-			path:             tempDir,
-			network:          "mainnet",
-			withdrawalCreds:  "0x0123456789abcdef0123456789abcdef01234567",
-			numExits:         1,
-			expectError:      false,
-			expectedPubkeys:  1,
-			expectedExitFile: true,
+			name:                "valid exits",
+			path:                tempDir,
+			network:             "mainnet",
+			withdrawalCreds:     "0x0123456789abcdef0123456789abcdef01234567",
+			numExits:            1,
+			expectedPubkeys:     []string{testPubkeyHex},
+			expectError:         false,
+			expectedPubkeyCount: 1,
+			expectedExitFile:    true,
 		},
 		{
-			name:             "invalid network",
-			path:             tempDir,
-			network:          "invalid",
-			withdrawalCreds:  "0x0123456789abcdef0123456789abcdef01234567",
-			numExits:         1,
-			expectError:      true,
-			expectedPubkeys:  0,
-			expectedExitFile: false,
+			name:                "invalid network",
+			path:                tempDir,
+			network:             "invalid",
+			withdrawalCreds:     "0x0123456789abcdef0123456789abcdef01234567",
+			numExits:            1,
+			expectedPubkeys:     []string{testPubkeyHex},
+			expectError:         true,
+			expectedPubkeyCount: 0,
+			expectedExitFile:    false,
 		},
 		{
-			name:             "invalid numExits",
-			path:             tempDir,
-			network:          "mainnet",
-			withdrawalCreds:  "0x0123456789abcdef0123456789abcdef01234567",
-			numExits:         2, // We only have 1 exit file
-			expectError:      true,
-			expectedPubkeys:  0,
-			expectedExitFile: false,
+			name:                "invalid numExits",
+			path:                tempDir,
+			network:             "mainnet",
+			withdrawalCreds:     "0x0123456789abcdef0123456789abcdef01234567",
+			numExits:            2, // We only have 1 exit file
+			expectedPubkeys:     []string{testPubkeyHex},
+			expectError:         true,
+			expectedPubkeyCount: 0,
+			expectedExitFile:    false,
 		},
 		{
-			name:             "invalid withdrawal credentials",
-			path:             tempDir,
-			network:          "mainnet",
-			withdrawalCreds:  "invalid",
-			numExits:         1,
-			expectError:      true,
-			expectedPubkeys:  0,
-			expectedExitFile: false,
+			name:                "invalid withdrawal credentials",
+			path:                tempDir,
+			network:             "mainnet",
+			withdrawalCreds:     "invalid",
+			numExits:            1,
+			expectedPubkeys:     []string{testPubkeyHex},
+			expectError:         true,
+			expectedPubkeyCount: 0,
+			expectedExitFile:    false,
+		},
+		{
+			name:                "unexpected pubkey",
+			path:                tempDir,
+			network:             "mainnet",
+			withdrawalCreds:     "0x0123456789abcdef0123456789abcdef01234567",
+			numExits:            1,
+			expectedPubkeys:     []string{"differentpubkey"},
+			expectError:         true,
+			expectedPubkeyCount: 0,
+			expectedExitFile:    false,
+		},
+		{
+			name:                "missing expected pubkey",
+			path:                tempDir,
+			network:             "mainnet",
+			withdrawalCreds:     "0x0123456789abcdef0123456789abcdef01234567",
+			numExits:            1,
+			expectedPubkeys:     []string{testPubkeyHex, "anotherpubkey"},
+			expectError:         true,
+			expectedPubkeyCount: 0,
+			expectedExitFile:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exits, err := NewVoluntaryExits(tt.path, tt.network, tt.withdrawalCreds, tt.numExits)
+			exits, err := NewVoluntaryExits(tt.path, tt.network, tt.withdrawalCreds, tt.numExits, tt.expectedPubkeys)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -199,7 +226,7 @@ func TestNewVoluntaryExits(t *testing.T) {
 
 			require.NoError(t, err)
 			require.NotNil(t, exits)
-			assert.Equal(t, tt.expectedPubkeys, len(exits.ExitsByPubkey))
+			assert.Equal(t, tt.expectedPubkeyCount, len(exits.ExitsByPubkey))
 
 			if tt.expectedExitFile {
 				pubkeyStr := testPubkeyHex

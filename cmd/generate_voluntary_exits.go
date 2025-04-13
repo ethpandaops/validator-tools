@@ -17,7 +17,8 @@ var (
 	voluntaryExitsPassphrase    string
 	voluntaryExitsBeaconURL     string
 	voluntaryExitsIterations    int
-	voluntaryExitsStartIndex    int
+	voluntaryExitsIndexStart    int
+	voluntaryExitsIndexOffset   int
 	voluntaryExitsWorkers       int
 )
 
@@ -48,7 +49,8 @@ func init() {
 	generateVoluntaryExitsCmd.Flags().StringVar(&voluntaryExitsPassphrase, "passphrase", "", "Passphrase for your keystore(s)")
 	generateVoluntaryExitsCmd.Flags().StringVar(&voluntaryExitsBeaconURL, "beacon", "", "Beacon node endpoint URL (e.g. 'http://localhost:5052')")
 	generateVoluntaryExitsCmd.Flags().IntVar(&voluntaryExitsIterations, "count", 50000, "Number of validators to process")
-	generateVoluntaryExitsCmd.Flags().IntVar(&voluntaryExitsStartIndex, "start", -1, "Starting validator index (optional, will query beacon node if not set)")
+	generateVoluntaryExitsCmd.Flags().IntVar(&voluntaryExitsIndexStart, "index-start", -1, "Starting validator index (optional, will query beacon node if not set)")
+	generateVoluntaryExitsCmd.Flags().IntVar(&voluntaryExitsIndexOffset, "index-offset", 0, "Offset to add to the starting validator index")
 	generateVoluntaryExitsCmd.Flags().IntVar(&voluntaryExitsWorkers, "workers", defaultWorkers, "Number of parallel workers (default: number of CPU cores)")
 
 	if err := generateVoluntaryExitsCmd.MarkFlagRequired("path"); err != nil {
@@ -109,7 +111,8 @@ func runGenerateVoluntaryExits(cmd *cobra.Command, args []string) error {
 		voluntaryExitsPassphrase,
 		voluntaryExitsBeaconURL,
 		voluntaryExitsIterations,
-		voluntaryExitsStartIndex,
+		voluntaryExitsIndexStart,
+		voluntaryExitsIndexOffset,
 		voluntaryExitsWorkers,
 	)
 

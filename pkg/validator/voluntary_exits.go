@@ -46,7 +46,7 @@ type SignedVoluntaryExit struct {
 }
 
 // NewVoluntaryExits creates a new VoluntaryExits instance
-func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*VoluntaryExits, error) {
+func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int, expectedPubkeys []string) (*VoluntaryExits, error) {
 	if err := setNetwork(network); err != nil {
 		log.WithError(err).WithField("network", network).Error("Failed to set network")
 
@@ -60,6 +60,12 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Vo
 		log.WithError(err).WithField("path", path).Error("Failed to read directory")
 
 		return nil, err
+	}
+
+	// Create a map of expected pubkeys for quick lookup
+	expectedPubkeyMap := make(map[string]bool)
+	for _, pubkey := range expectedPubkeys {
+		expectedPubkeyMap[strings.TrimPrefix(pubkey, "0x")] = true
 	}
 
 	for _, file := range files {
@@ -78,6 +84,11 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Vo
 
 		pubkeyStr := hex.EncodeToString(vexit.Pubkey)
 
+		// Check if pubkey is in expected list
+		if !expectedPubkeyMap[pubkeyStr] {
+			return nil, fmt.Errorf("unexpected pubkey found: %s", pubkeyStr)
+		}
+
 		if iErr := initializeExitState(exitsByPubkey, pubkeyStr, vexit); iErr != nil {
 			log.WithError(iErr).WithField("pubkey", pubkeyStr).Error("Failed to initialize exit state")
 
@@ -85,6 +96,13 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Vo
 		}
 
 		exitsByPubkey[pubkeyStr].Exits = append(exitsByPubkey[pubkeyStr].Exits, vexit)
+	}
+
+	// Check if all expected pubkeys were found
+	for pubkey := range expectedPubkeyMap {
+		if _, found := exitsByPubkey[pubkey]; !found {
+			return nil, fmt.Errorf("expected pubkey not found: %s", pubkey)
+		}
 	}
 
 	if vErr := validateExits(exitsByPubkey, numExits); vErr != nil {

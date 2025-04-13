@@ -14,6 +14,7 @@ var (
 	verifyExitsNetwork         string
 	verifyExitsWithdrawalCreds string
 	verifyExitsNumExits        int
+	verifyExitsPubkeys         []string
 )
 
 var verifyVoluntaryExitsCmd = &cobra.Command{
@@ -21,9 +22,9 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 	Short: "Verify voluntary exit messages",
 	Long:  `Verify voluntary exit messages for Ethereum validators.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		exits, err := validator.NewVoluntaryExits(verifyExitsPath, verifyExitsNetwork, verifyExitsWithdrawalCreds, verifyExitsNumExits)
+		exits, err := validator.NewVoluntaryExits(verifyExitsPath, verifyExitsNetwork, verifyExitsWithdrawalCreds, verifyExitsNumExits, verifyExitsPubkeys)
 		if err != nil {
-			return errors.Wrap(err, "failed to generate exits")
+			return errors.Wrap(err, "failed to verify exits")
 		}
 
 		err = exits.Verify()
@@ -41,9 +42,10 @@ func init() {
 	verifyCmd.AddCommand(verifyVoluntaryExitsCmd)
 
 	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsPath, "path", "", "Path to directory containing exit files")
-	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsNetwork, "network", "", "Network (mainnet or holesky)")
+	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsNetwork, "network", "", "Network (mainnet, holesky or hoodi)")
 	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsWithdrawalCreds, "withdrawal-credentials", "", "Withdrawal credentials (hex)")
-	verifyVoluntaryExitsCmd.Flags().IntVar(&verifyExitsNumExits, "count", 0, "Number of exits that should have be generated")
+	verifyVoluntaryExitsCmd.Flags().IntVar(&verifyExitsNumExits, "count", 0, "Number of exits that should have been generated")
+	verifyVoluntaryExitsCmd.Flags().StringSliceVar(&verifyExitsPubkeys, "pubkeys", []string{}, "Expected validator pubkeys (comma-separated)")
 
 	err := verifyVoluntaryExitsCmd.MarkFlagRequired("path")
 	if err != nil {
@@ -58,5 +60,10 @@ func init() {
 	err = verifyVoluntaryExitsCmd.MarkFlagRequired("withdrawal-credentials")
 	if err != nil {
 		log.WithError(err).Fatalf("Failed to mark flag %s as required", "withdrawal-credentials")
+	}
+
+	err = verifyVoluntaryExitsCmd.MarkFlagRequired("pubkeys")
+	if err != nil {
+		log.WithError(err).Fatalf("Failed to mark flag %s as required", "pubkeys")
 	}
 }

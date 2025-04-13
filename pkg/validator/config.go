@@ -95,7 +95,6 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 
 	var forkData struct {
 		Data struct {
-			Epoch           string `json:"epoch"`
 			PreviousVersion string `json:"previous_version"`
 			CurrentVersion  string `json:"current_version"`
 		} `json:"data"`
@@ -107,10 +106,8 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 		return nil, errors.Wrap(errFork, "failed to parse fork response")
 	}
 
-	config.Epoch = forkData.Data.Epoch
 	config.ExitForkVersion = forkData.Data.PreviousVersion
 	config.CurrentForkVersion = forkData.Data.CurrentVersion
-	log.Infof("Epoch: %s", config.Epoch)
 	log.Infof("Exit fork version: %s", config.ExitForkVersion)
 	log.Infof("Current fork version: %s", config.CurrentForkVersion)
 
@@ -129,6 +126,8 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 			DomainBlsToExecutionChange       string `json:"DOMAIN_BLS_TO_EXECUTION_CHANGE"`
 			DomainVoluntaryExit              string `json:"DOMAIN_VOLUNTARY_EXIT"`
 			MinValidatorWithdrawabilityDelay string `json:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
+			CapellaForkVersion               string `json:"CAPELLA_FORK_VERSION"`
+			CapellaForkEpoch                 string `json:"CAPELLA_FORK_EPOCH"`
 		} `json:"data"`
 	}
 
@@ -137,6 +136,9 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 
 		return nil, errors.Wrap(errSpec, "failed to parse spec response")
 	}
+
+	config.Epoch = specData.Data.CapellaForkEpoch
+	config.ExitForkVersion = specData.Data.CapellaForkVersion
 
 	// make sure config.Epoch is >= specData.Data.MinValidatorWithdrawabilityDelay
 	if config.Epoch < specData.Data.MinValidatorWithdrawabilityDelay {
@@ -155,10 +157,10 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 func (g *VoluntaryExitGenerator) GetLatestValidatorIndex() (int, error) {
 	log.Info("Getting validator start index")
 
-	if g.StartIndex >= 0 {
-		log.Infof("Using provided start index: %d", g.StartIndex)
+	if g.IndexStart >= 0 {
+		log.Infof("Using provided start index: %d", g.IndexStart)
 
-		return g.StartIndex, nil
+		return g.IndexStart, nil
 	}
 
 	resp, err := g.FetchJSON(g.BeaconURL + "/eth/v1/beacon/states/head/validators")

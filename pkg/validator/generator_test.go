@@ -13,16 +13,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type generatorMockCmd struct {
+	output     []byte
+	shouldFail bool
+}
+
+func (m *generatorMockCmd) CombinedOutput() ([]byte, error) {
+	if m.shouldFail {
+		return m.output, fmt.Errorf("mock command failed")
+	}
+
+	return m.output, nil
+}
+
 // Mock ethdo command for testing
 func mockEthdoCommand(success bool) func(string, ...string) commander {
 	return func(name string, args ...string) commander {
+		fmt.Printf("mockEthdoCommand called with success=%v, args=%v\n", success, args)
+
 		if success {
-			return &mockCmd{
+			// The output file is written by runEthdoCommand after the command succeeds
+			return &generatorMockCmd{
 				output: []byte(`{"message": "Exit generated successfully"}`),
 			}
 		}
 
-		return &mockCmd{
+		return &generatorMockCmd{
 			shouldFail: true,
 			output:     []byte("mock command failed"),
 		}
@@ -32,20 +48,22 @@ func mockEthdoCommand(success bool) func(string, ...string) commander {
 func TestNewVoluntaryExitGenerator(t *testing.T) {
 	generator := NewVoluntaryExitGenerator(
 		"/tmp/exits",
-		"0x123",
+		"0x0000000000000000000000000000000000000000",
 		"password",
 		"http://localhost:5052",
 		100,
 		10,
+		5,
 		4,
 	)
 
 	assert.Equal(t, "/tmp/exits", generator.OutputDir)
-	assert.Equal(t, "0x123", generator.WithdrawalCredentials)
+	assert.Equal(t, "0x0000000000000000000000000000000000000000", generator.WithdrawalCredentials)
 	assert.Equal(t, "password", generator.Passphrase)
 	assert.Equal(t, "http://localhost:5052", generator.BeaconURL)
 	assert.Equal(t, 100, generator.Iterations)
-	assert.Equal(t, 10, generator.StartIndex)
+	assert.Equal(t, 10, generator.IndexStart)
+	assert.Equal(t, 5, generator.IndexOffset)
 	assert.Equal(t, 4, generator.NumWorkers)
 	assert.Equal(t, int32(0), generator.CurrentKeystore)
 	assert.Equal(t, int32(0), generator.TotalKeystores)
@@ -102,7 +120,7 @@ func TestGetValidatorStartIndex(t *testing.T) {
 
 			generator := &VoluntaryExitGenerator{
 				BeaconURL:  server.URL,
-				StartIndex: tt.providedIndex,
+				IndexStart: tt.providedIndex,
 			}
 
 			index, err := generator.GetValidatorStartIndex()
@@ -138,13 +156,16 @@ func TestGenerateExits(t *testing.T) {
 		name        string
 		iterations  int
 		startIndex  int
+		indexOffset int
 		expectError bool
 		setup       func(*VoluntaryExitGenerator)
 	}{
 		{
-			name:       "successful generation",
-			iterations: 3,
-			startIndex: 1000,
+			name:        "successful generation",
+			iterations:  3,
+			startIndex:  1000,
+			indexOffset: 5,
+			expectError: false,
 			setup: func(g *VoluntaryExitGenerator) {
 				g.OutputDir = tmpDir
 				g.NumWorkers = 2
@@ -154,6 +175,7 @@ func TestGenerateExits(t *testing.T) {
 			name:        "invalid keystore path",
 			iterations:  3,
 			startIndex:  1000,
+			indexOffset: 5,
 			expectError: true,
 			setup: func(g *VoluntaryExitGenerator) {
 				g.OutputDir = tmpDir
@@ -164,6 +186,7 @@ func TestGenerateExits(t *testing.T) {
 			name:        "invalid output directory",
 			iterations:  3,
 			startIndex:  1000,
+			indexOffset: 5,
 			expectError: true,
 			setup: func(g *VoluntaryExitGenerator) {
 				g.OutputDir = "/nonexistent/directory"
@@ -176,12 +199,14 @@ func TestGenerateExits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Replace exec.Command with our mock
 			origExecCommand := execCommand
-			execCommand = mockEthdoCommand(!tt.expectError)
+			execCommand = mockEthdoCommand(!tt.expectError) // Only succeed for non-error cases
 
 			defer func() { execCommand = origExecCommand }()
 
 			generator := &VoluntaryExitGenerator{
-				Iterations: tt.iterations,
+				Iterations:  tt.iterations,
+				IndexOffset: tt.indexOffset,
+				OutputDir:   tmpDir, // Set default output dir
 			}
 
 			if tt.setup != nil {
@@ -189,15 +214,15 @@ func TestGenerateExits(t *testing.T) {
 			}
 
 			config := &BeaconConfig{
-				GenesisValidatorsRoot: "0x1234",
+				GenesisValidatorsRoot: "0x0000000000000000000000000000000000000000",
 				Epoch:                 "12345",
 				GenesisVersion:        "0x00000000",
 				ExitForkVersion:       "0x00000000",
 			}
 
 			testPath := keystorePath
-			if tt.expectError {
-				testPath = "nonexistent/keystore.json"
+			if tt.name == "invalid keystore path" {
+				testPath = filepath.Join(tmpDir, "nonexistent.json")
 			}
 
 			err := generator.GenerateExits(testPath, config, tt.startIndex)
@@ -212,7 +237,7 @@ func TestGenerateExits(t *testing.T) {
 			// Verify output files were created
 			for i := 1; i <= tt.iterations; i++ {
 				expectedFile := filepath.Join(generator.OutputDir,
-					fmt.Sprintf("%d-%s.json", tt.startIndex+i, keystoreContent["pubkey"]))
+					fmt.Sprintf("%d-%s.json", tt.startIndex+i+tt.indexOffset, keystoreContent["pubkey"]))
 				_, err := os.Stat(expectedFile)
 				assert.NoError(t, err, "Expected output file not found: %s", expectedFile)
 			}
@@ -256,7 +281,7 @@ func TestGenerateExitsAtomicCounter(t *testing.T) {
 	}
 
 	config := &BeaconConfig{
-		GenesisValidatorsRoot: "0x1234",
+		GenesisValidatorsRoot: "0x0000000000000000000000000000000000000000",
 		Epoch:                 "12345",
 		GenesisVersion:        "0x00000000",
 		ExitForkVersion:       "0x00000000",
