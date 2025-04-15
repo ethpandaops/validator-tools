@@ -1,4 +1,4 @@
-FROM golang:1.23 AS builder
+FROM golang:1.24 AS builder
 WORKDIR /src
 COPY go.sum go.mod ./
 RUN go mod download
@@ -15,10 +15,10 @@ RUN apt-get update && apt-get -y upgrade && apt-get install -y --no-install-reco
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://github.com/wealdtech/ethdo/releases/download/v1.37.0/ethdo-1.37.0-linux-amd64.tar.gz \
-  && tar xzf ethdo-1.37.0-linux-amd64.tar.gz \
+RUN wget https://github.com/wealdtech/ethdo/releases/download/v1.37.3/ethdo-1.37.3-linux-amd64.tar.gz \
+  && tar xzf ethdo-1.37.3-linux-amd64.tar.gz \
   && mv ethdo /usr/bin/ \
-  && rm ethdo-1.37.0-linux-amd64.tar.gz
+  && rm ethdo-1.37.3-linux-amd64.tar.gz
 
 COPY --from=builder /bin/app /validator-tools
 ENTRYPOINT ["/validator-tools"]
