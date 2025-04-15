@@ -69,25 +69,6 @@ func init() {
 		panic(err)
 	}
 }
-
-func checkVoluntaryExitsDependencies() error {
-	dependencies := []string{"jq", "curl", "ethdo"}
-	for _, dep := range dependencies {
-		if _, err := exec.LookPath(dep); err != nil {
-			msg := "Required command '%s' not found. Please install it first."
-			if dep == "ethdo" {
-				msg += "\nFor ethdo, please visit: https://github.com/wealdtech/ethdo"
-			} else {
-				msg += "\nPlease install %s using your system's package manager"
-			}
-
-			return errors.Errorf(msg, dep)
-		}
-	}
-
-	return nil
-}
-
 func runGenerateVoluntaryExits(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return errors.New("at least one keystore file must be specified")
@@ -97,8 +78,8 @@ func runGenerateVoluntaryExits(cmd *cobra.Command, args []string) error {
 		return errors.New("number of workers must be at least 1")
 	}
 
-	if err := checkVoluntaryExitsDependencies(); err != nil {
-		return err
+	if _, err := exec.LookPath("ethdo"); err != nil {
+		return errors.Errorf("Required command 'ethdo' not found. Please install it first.\nFor ethdo, please visit: https://github.com/wealdtech/ethdo")
 	}
 
 	if err := os.MkdirAll(voluntaryExitsOutputDir, 0o755); err != nil {

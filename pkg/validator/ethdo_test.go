@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -14,13 +15,17 @@ import (
 
 type mockCmd struct {
 	t          *testing.T
+	mu         sync.Mutex
 	execCalled bool
 	shouldFail bool
 	output     []byte
 }
 
 func (m *mockCmd) CombinedOutput() ([]byte, error) {
+	m.mu.Lock()
 	m.execCalled = true
+	m.mu.Unlock()
+
 	if m.shouldFail {
 		return []byte("mock command failed"), &exec.ExitError{ProcessState: new(os.ProcessState)}
 	}
