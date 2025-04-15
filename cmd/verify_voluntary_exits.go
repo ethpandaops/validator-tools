@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	verifyExitsPath            string
+	verifyExitsInput           string
 	verifyExitsNetwork         string
 	verifyExitsWithdrawalCreds string
 	verifyExitsNumExits        int
@@ -22,7 +22,7 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 	Short: "Verify voluntary exit messages",
 	Long:  `Verify voluntary exit messages for Ethereum validators.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		exits, err := validator.NewVoluntaryExits(verifyExitsPath, verifyExitsNetwork, verifyExitsWithdrawalCreds, verifyExitsNumExits, verifyExitsPubkeys)
+		exits, err := validator.NewVoluntaryExits(verifyExitsInput, verifyExitsNetwork, verifyExitsWithdrawalCreds, verifyExitsNumExits, verifyExitsPubkeys)
 		if err != nil {
 			return errors.Wrap(err, "failed to verify exits")
 		}
@@ -41,15 +41,15 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 func init() {
 	verifyCmd.AddCommand(verifyVoluntaryExitsCmd)
 
-	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsPath, "path", "", "Path to directory containing exit files")
+	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsInput, "input", "", "Path to directory containing exit files")
 	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsNetwork, "network", "", "Network (mainnet, holesky or hoodi)")
 	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsWithdrawalCreds, "withdrawal-credentials", "", "Withdrawal credentials (hex)")
 	verifyVoluntaryExitsCmd.Flags().IntVar(&verifyExitsNumExits, "count", 0, "Number of exits that should have been generated")
 	verifyVoluntaryExitsCmd.Flags().StringSliceVar(&verifyExitsPubkeys, "pubkeys", []string{}, "Expected validator pubkeys (comma-separated)")
 
-	err := verifyVoluntaryExitsCmd.MarkFlagRequired("path")
+	err := verifyVoluntaryExitsCmd.MarkFlagRequired("input")
 	if err != nil {
-		log.WithError(err).Fatalf("Failed to mark flag %s as required", "path")
+		log.WithError(err).Fatalf("Failed to mark flag %s as required", "input")
 	}
 
 	err = verifyVoluntaryExitsCmd.MarkFlagRequired("network")

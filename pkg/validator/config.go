@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -153,57 +152,34 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 	return config, nil
 }
 
-// GetLatestValidatorIndex fetches the latest validator index from the beacon node
-func (g *VoluntaryExitGenerator) GetLatestValidatorIndex() (int, error) {
-	log.Info("Getting validator start index")
-
-	if g.IndexStart >= 0 {
-		log.Infof("Using provided start index: %d", g.IndexStart)
-
-		return g.IndexStart, nil
+func (c *BeaconConfig) Validate() error {
+	if c.GenesisValidatorsRoot == "" {
+		return errors.New("genesis validators root is required")
 	}
 
-	resp, err := g.FetchJSON(g.BeaconURL + "/eth/v1/beacon/states/head/validators")
-	if err != nil {
-		log.Errorf("Failed to fetch validators: %v", err)
-
-		return 0, err
+	if c.GenesisVersion == "" {
+		return errors.New("genesis version is required")
 	}
 
-	var result struct {
-		Data []struct {
-			Index string `json:"index"`
-		} `json:"data"`
+	if c.ExitForkVersion == "" {
+		return errors.New("exit fork version is required")
 	}
 
-	if err := json.Unmarshal(resp, &result); err != nil {
-		log.Errorf("Failed to parse validator response: %v", err)
-
-		return 0, errors.Wrap(err, "failed to parse validator response")
+	if c.CurrentForkVersion == "" {
+		return errors.New("current fork version is required")
 	}
 
-	maxIndex := -1
-
-	for _, v := range result.Data {
-		index, err := strconv.Atoi(v.Index)
-		if err != nil {
-			log.Infof("Skipping invalid index: %s", v.Index)
-
-			continue
-		}
-
-		if index > maxIndex {
-			maxIndex = index
-		}
+	if c.Epoch == "" {
+		return errors.New("epoch is required")
 	}
 
-	if maxIndex == -1 {
-		log.Error("No valid validator indices found")
-
-		return 0, errors.New("no valid validator indices found")
+	if c.BlsToExecutionChangeDomain == "" {
+		return errors.New("BLS to execution change domain is required")
 	}
 
-	log.Infof("Found max validator index: %d", maxIndex)
+	if c.VoluntaryExitDomain == "" {
+		return errors.New("voluntary exit domain is required")
+	}
 
-	return maxIndex, nil
+	return nil
 }

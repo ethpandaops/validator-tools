@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	verifyDepositDataPath        string
+	verifyDepositDataInput       string
 	verifyExpectedNetwork        string
 	verifyExpectedAmount         uint64
 	verifyExpectedWithdrawalCred string
@@ -25,7 +25,7 @@ type verifyDepositDataFunc func() error
 // Default implementation
 var verifyDepositData verifyDepositDataFunc = func() error {
 	depositData, err := validator.NewData(
-		verifyDepositDataPath,
+		verifyDepositDataInput,
 		verifyExpectedNetwork,
 		verifyExpectedWithdrawalCred,
 		verifyExpectedAmount,
@@ -72,14 +72,14 @@ var verifyDepositDataCmd = &cobra.Command{
 func init() {
 	verifyCmd.AddCommand(verifyDepositDataCmd)
 
-	verifyDepositDataCmd.Flags().StringVar(&verifyDepositDataPath, "deposit-data", "", "Path to deposit data JSON file")
+	verifyDepositDataCmd.Flags().StringVar(&verifyDepositDataInput, "input", "", "Path to deposit data JSON file")
 	verifyDepositDataCmd.Flags().StringVar(&verifyExpectedNetwork, "network", "", "Expected network (e.g. mainnet, goerli)")
 	verifyDepositDataCmd.Flags().Uint64Var(&verifyExpectedAmount, "amount", 32000000000, "Expected deposit amount in Gwei")
 	verifyDepositDataCmd.Flags().StringVar(&verifyExpectedWithdrawalCred, "withdrawal-credentials", "", "Expected withdrawal credentials (hex)")
 	verifyDepositDataCmd.Flags().IntVar(&verifyExpectedCount, "count", 0, "Expected number of deposits")
 
-	err := verifyDepositDataCmd.MarkFlagRequired("deposit-data")
+	err := verifyDepositDataCmd.MarkFlagRequired("input")
 	if err != nil {
-		log.WithError(err).Fatalf("Failed to mark flag %s as required", "deposit-data")
+		log.WithError(err).Fatalf("Failed to mark flag %s as required", "input")
 	}
 }

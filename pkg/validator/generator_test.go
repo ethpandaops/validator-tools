@@ -155,6 +155,16 @@ func TestGenerateExits(t *testing.T) {
 	err = os.WriteFile(keystorePath, keystoreJSON, 0o600)
 	require.NoError(t, err)
 
+	validConfig := &BeaconConfig{
+		GenesisValidatorsRoot:      "0x123",
+		GenesisVersion:             "0x456",
+		ExitForkVersion:            "0x789",
+		CurrentForkVersion:         "0xabc",
+		Epoch:                      "123",
+		BlsToExecutionChangeDomain: "0xdef",
+		VoluntaryExitDomain:        "0xghi",
+	}
+
 	tests := []struct {
 		name         string
 		keystorePath string
@@ -163,18 +173,46 @@ func TestGenerateExits(t *testing.T) {
 		expectErr    bool
 	}{
 		{
-			name:         "valid keystore",
+			name:         "valid keystore and config",
 			keystorePath: keystorePath,
-			config:       &BeaconConfig{},
+			config:       validConfig,
 			startIndex:   0,
 			expectErr:    false,
 		},
 		{
 			name:         "invalid keystore path",
 			keystorePath: "/nonexistent/path",
-			config:       &BeaconConfig{},
+			config:       validConfig,
 			startIndex:   0,
 			expectErr:    true,
+		},
+		{
+			name:         "invalid config - missing genesis validators root",
+			keystorePath: keystorePath,
+			config: &BeaconConfig{
+				GenesisVersion:             "0x456",
+				ExitForkVersion:            "0x789",
+				CurrentForkVersion:         "0xabc",
+				Epoch:                      "123",
+				BlsToExecutionChangeDomain: "0xdef",
+				VoluntaryExitDomain:        "0xghi",
+			},
+			startIndex: 0,
+			expectErr:  true,
+		},
+		{
+			name:         "invalid config - missing voluntary exit domain",
+			keystorePath: keystorePath,
+			config: &BeaconConfig{
+				GenesisValidatorsRoot:      "0x123",
+				GenesisVersion:             "0x456",
+				ExitForkVersion:            "0x789",
+				CurrentForkVersion:         "0xabc",
+				Epoch:                      "123",
+				BlsToExecutionChangeDomain: "0xdef",
+			},
+			startIndex: 0,
+			expectErr:  true,
 		},
 	}
 

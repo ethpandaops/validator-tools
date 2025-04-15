@@ -116,6 +116,10 @@ func (g *VoluntaryExitGenerator) GenerateExits(keystorePath string, config *Beac
 	atomic.AddInt32(&g.CurrentKeystore, 1)
 	keystoreNum := atomic.LoadInt32(&g.CurrentKeystore)
 
+	if err := config.Validate(); err != nil {
+		return errors.Wrap(err, "invalid beacon configuration")
+	}
+
 	log.Info("Generating exits")
 	log.Infof("Processing keystore %d/%d: %s", keystoreNum, g.TotalKeystores, keystorePath)
 	log.Infof("Start index: %d", startIndex)
