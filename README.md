@@ -9,23 +9,41 @@ This repository contains various tools for validators.
 Verify deposit data json file with expected network and withdrawal credentials.
 
 ```
-validator-tools deposit data \
-    --network <holesky|mainnet> \
+validator-tools verify deposit_data \
+    --network <mainnet|hoodi|holesky> \
     --deposit-data <PATH> # Path to deposit data json file \
     --count <COUNT> # Expected number of deposits in the file \
-    --withdrawal-credentials <WITHDRAWAL_CREDENTIALS>
+    --withdrawal-credentials <WITHDRAWAL_CREDENTIALS> \
+    --amount <AMOUNT> # Expected deposit amount in Gwei (default: 32000000000)
 ```
 
-### Deposit Exits
+### Voluntary Exits
 
-Verify (pre-signed) voluntary exits json files with expected network and withdrawal credentials.
+#### Generate Voluntary Exits
 
-> Files within the directory must follow the format `<validator_index>-<pubkey>.json`
+Generate validator voluntary exit messages for multiple keystores. Requires ethdo, jq, and curl to be installed.
 
 ```
-validator-tools deposit exits \
-    --network <holesky|mainnet> \
-    --path <PATH> # Path to directory containing voluntary exits json files \
-    --count <COUNT> # Expected number of exits per validator pubkey eg. 50000 \
-    --withdrawal-credentials <WITHDRAWAL_CREDENTIALS>
+validator-tools generate voluntary_exits [keystore_files...] \
+    --path <PATH> # Path to directory where result files will be written \
+    --withdrawal-credentials <WITHDRAWAL_CREDENTIALS> \
+    --passphrase <PASSPHRASE> # Passphrase for your keystore(s) \
+    --beacon <URL> # Beacon node endpoint URL (e.g. 'http://localhost:5052') \
+    --count <COUNT> # Number of validators to process (default: 50000) \
+    --index-start <INDEX> # Starting validator index (optional) \
+    --index-offset <OFFSET> # Offset to add to the starting validator index (default: 0) \
+    --workers <COUNT> # Number of parallel workers (default: number of CPU cores)
+```
+
+#### Verify Voluntary Exits
+
+Verify voluntary exit messages for Ethereum validators.
+
+```
+validator-tools verify voluntary_exits \
+    --path <PATH> # Path to directory containing exit files \
+    --network <mainnet|hoodi|holesky> \
+    --withdrawal-credentials <WITHDRAWAL_CREDENTIALS> \
+    --count <COUNT> # Number of exits that should have been generated
+    --pubkeys <PUBKEYS> # Expected validator pubkeys (comma-separated)
 ```

@@ -1,4 +1,4 @@
-package deposit
+package validator
 
 import (
 	"encoding/hex"
@@ -15,23 +15,28 @@ import (
 	"github.com/prysmaticlabs/prysm/v5/config/params"
 	"github.com/prysmaticlabs/prysm/v5/consensus-types/primitives"
 	ethpb "github.com/prysmaticlabs/prysm/v5/proto/prysm/v1alpha1"
+	"github.com/sirupsen/logrus"
 )
 
-type Exits struct {
+// VoluntaryExits represents a collection of voluntary exits for validators
+type VoluntaryExits struct {
 	WithdrawalCreds []byte
 	ExitsByPubkey   map[string]*ValidatorExits
 }
 
+// ValidatorExits represents the state and exits for a validator
 type ValidatorExits struct {
 	State state.BeaconState
 	Exits []*VoluntaryExit
 }
 
+// VoluntaryExit represents a single voluntary exit
 type VoluntaryExit struct {
 	PBExit *ethpb.SignedVoluntaryExit
 	Pubkey []byte
 }
 
+// SignedVoluntaryExit represents the JSON structure of a signed voluntary exit
 type SignedVoluntaryExit struct {
 	Message struct {
 		Epoch          string `json:"epoch"`
@@ -40,8 +45,11 @@ type SignedVoluntaryExit struct {
 	Signature string `json:"signature"`
 }
 
-func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Exits, error) {
+// NewVoluntaryExits creates a new VoluntaryExits instance
+func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int, expectedPubkeys []string) (*VoluntaryExits, error) {
 	if err := setNetwork(network); err != nil {
+		log.WithError(err).WithField("network", network).Error("Failed to set network")
+
 		return nil, err
 	}
 
@@ -49,7 +57,15 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Ex
 
 	files, err := os.ReadDir(path)
 	if err != nil {
+		log.WithError(err).WithField("path", path).Error("Failed to read directory")
+
 		return nil, err
+	}
+
+	// Create a map of expected pubkeys for quick lookup
+	expectedPubkeyMap := make(map[string]bool)
+	for _, pubkey := range expectedPubkeys {
+		expectedPubkeyMap[strings.TrimPrefix(pubkey, "0x")] = true
 	}
 
 	for _, file := range files {
@@ -61,41 +77,62 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int) (*Ex
 
 		vexit, rErr := readExitFile(filePath)
 		if rErr != nil {
-			fmt.Printf("⚠️ skipping %s: %v\n", file.Name(), rErr)
+			log.WithError(rErr).WithField("file", file.Name()).Warn("Skipping file")
 
 			continue
 		}
 
 		pubkeyStr := hex.EncodeToString(vexit.Pubkey)
 
+		// Check if pubkey is in expected list
+		if !expectedPubkeyMap[pubkeyStr] {
+			return nil, fmt.Errorf("unexpected pubkey found: %s", pubkeyStr)
+		}
+
 		if iErr := initializeExitState(exitsByPubkey, pubkeyStr, vexit); iErr != nil {
+			log.WithError(iErr).WithField("pubkey", pubkeyStr).Error("Failed to initialize exit state")
+
 			return nil, iErr
 		}
 
 		exitsByPubkey[pubkeyStr].Exits = append(exitsByPubkey[pubkeyStr].Exits, vexit)
 	}
 
+	// Check if all expected pubkeys were found
+	for pubkey := range expectedPubkeyMap {
+		if _, found := exitsByPubkey[pubkey]; !found {
+			return nil, fmt.Errorf("expected pubkey not found: %s", pubkey)
+		}
+	}
+
 	if vErr := validateExits(exitsByPubkey, numExits); vErr != nil {
+		log.WithError(vErr).Error("Failed to validate exits")
+
 		return nil, vErr
 	}
 
-	creds, err := hex.DecodeString(withdrawalCreds)
+	creds, err := hex.DecodeString(strings.TrimPrefix(withdrawalCreds, "0x"))
 	if err != nil {
+		log.WithError(err).WithField("withdrawal_creds", withdrawalCreds).Error("Failed to decode withdrawal credentials")
+
 		return nil, err
 	}
 
-	return &Exits{
+	return &VoluntaryExits{
 		WithdrawalCreds: creds,
 		ExitsByPubkey:   exitsByPubkey,
 	}, nil
 }
 
+// setNetwork configures the network parameters
 func setNetwork(network string) error {
 	switch network {
 	case "mainnet":
 		params.OverrideBeaconConfig(params.MainnetConfig())
 	case "holesky":
 		params.OverrideBeaconConfig(params.HoleskyConfig())
+	case "hoodi":
+		params.OverrideBeaconConfig(params.HoodiConfig())
 	default:
 		return fmt.Errorf("unknown network: %s", network)
 	}
@@ -103,10 +140,12 @@ func setNetwork(network string) error {
 	return nil
 }
 
+// isExitFile checks if a file is a JSON exit file
 func isExitFile(file os.DirEntry) bool {
 	return !file.IsDir() && strings.Contains(file.Name(), ".json")
 }
 
+// initializeExitState initializes the state for a validator's exits
 func initializeExitState(exitsByPubkey map[string]*ValidatorExits, pubkeyStr string, vexit *VoluntaryExit) error {
 	if _, exists := exitsByPubkey[pubkeyStr]; exists {
 		return nil
@@ -136,6 +175,7 @@ func initializeExitState(exitsByPubkey map[string]*ValidatorExits, pubkeyStr str
 	return nil
 }
 
+// validateExits validates the number and sequence of exits
 func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error {
 	if len(exitsByPubkey) == 0 {
 		return fmt.Errorf("no voluntary exits found")
@@ -148,7 +188,7 @@ func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error
 			return fmt.Errorf("%d files found but expected %d for pubkey %s", len(validatorExits.Exits), total, pubkey)
 		}
 
-		if len(validatorExits.Exits) != numExits {
+		if numExits > 0 && len(validatorExits.Exits) != numExits {
 			return fmt.Errorf("expected %d exits for pubkey %s but found %d", numExits, pubkey, len(validatorExits.Exits))
 		}
 	}
@@ -156,40 +196,53 @@ func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error
 	return nil
 }
 
+// readExitFile reads and parses a voluntary exit file
 func readExitFile(filePath string) (*VoluntaryExit, error) {
 	parts := strings.Split(strings.TrimSuffix(filepath.Base(filePath), ".json"), "-")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid file name format: %s", filePath)
 	}
 
-	pubkey, err := hex.DecodeString(parts[1])
+	pubkey, err := hex.DecodeString(strings.TrimPrefix(parts[1], "0x"))
 	if err != nil {
+		log.WithError(err).WithField("file", filePath).Error("Invalid pubkey in filename")
+
 		return nil, fmt.Errorf("invalid pubkey in filename: %s", filePath)
 	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
+		log.WithError(err).WithField("file", filePath).Error("Failed to read exit file")
+
 		return nil, err
 	}
 
 	var signedExit SignedVoluntaryExit
 
 	if uErr := json.Unmarshal(data, &signedExit); uErr != nil {
+		log.WithError(uErr).WithField("file", filePath).Error("Failed to unmarshal exit file")
+
 		return nil, uErr
 	}
 
 	epoch, err := strconv.ParseUint(signedExit.Message.Epoch, 10, 64)
 	if err != nil {
+		log.WithError(err).WithField("file", filePath).Error("Invalid epoch in exit file")
+
 		return nil, err
 	}
 
 	validatorIndex, err := strconv.ParseUint(signedExit.Message.ValidatorIndex, 10, 64)
 	if err != nil {
+		log.WithError(err).WithField("file", filePath).Error("Invalid validator index in exit file")
+
 		return nil, err
 	}
 
 	signature, err := hex.DecodeString(strings.TrimPrefix(signedExit.Signature, "0x"))
 	if err != nil {
+		log.WithError(err).WithField("file", filePath).Error("Invalid signature in exit file")
+
 		return nil, err
 	}
 
@@ -205,8 +258,10 @@ func readExitFile(filePath string) (*VoluntaryExit, error) {
 	}, nil
 }
 
-func (e *Exits) Verify() error {
+// Verify verifies all voluntary exits
+func (e *VoluntaryExits) Verify() error {
 	for pubkey, validatorExits := range e.ExitsByPubkey {
+		log := log.WithField("pubkey", pubkey)
 		verifiedCount := 0
 
 		for _, exit := range validatorExits.Exits {
@@ -215,28 +270,33 @@ func (e *Exits) Verify() error {
 				WithdrawalCredentials: e.WithdrawalCreds,
 				ExitEpoch:             params.BeaconConfig().FarFutureEpoch,
 			}); err != nil {
-				fmt.Printf("Failed to verify exit for pubkey %s: %v\n", pubkey, err)
+				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to append validator")
 
 				return err
 			}
 
 			validator, err := validatorExits.State.ValidatorAtIndexReadOnly(exit.PBExit.Exit.ValidatorIndex)
 			if err != nil {
-				fmt.Printf("Failed to verify exit for pubkey %s: %v\n", pubkey, err)
+				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to get validator")
 
 				return err
 			}
 
 			if err := blocks.VerifyExitAndSignature(validator, validatorExits.State, exit.PBExit); err != nil {
-				fmt.Printf("Failed to verify exit for pubkey %s: %v\n", pubkey, err)
+				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to verify exit and signature")
 
 				return err
 			}
 
 			verifiedCount++
+
+			log.WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Debug("Exit verified")
 		}
 
-		fmt.Printf("✅ %d/%d verified for %s\n", verifiedCount, len(validatorExits.Exits), pubkey)
+		log.WithFields(logrus.Fields{
+			"verified": verifiedCount,
+			"total":    len(validatorExits.Exits),
+		}).Info("Exits verified")
 	}
 
 	return nil
