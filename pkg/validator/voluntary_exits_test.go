@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/prysmaticlabs/prysm/v5/config/params"
+	ethpb "github.com/prysmaticlabs/prysm/v5/proto/prysm/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -413,4 +414,292 @@ func TestVerify(t *testing.T) {
 	// Just verify the structure exists
 	assert.NotNil(t, exits)
 	assert.Equal(t, withdrawalCreds, exits.WithdrawalCreds)
+}
+
+func TestValidateIndicesMatch(t *testing.T) {
+	// Create test data with matching indices
+	pubkey1 := "pubkey1"
+	pubkey2 := "pubkey2"
+
+	exitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+		pubkey2: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test with matching indices
+	err := validateIndicesMatch(exitsByPubkey)
+	assert.NoError(t, err, "Expected no error for matching indices")
+
+	// Create test data with mismatched min index
+	mismatchedMinExitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+		pubkey2: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101, // Different min index
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test with mismatched min index
+	err = validateIndicesMatch(mismatchedMinExitsByPubkey)
+	assert.Error(t, err, "Expected error for mismatched min indices")
+	assert.Contains(t, err.Error(), "minimum validator index mismatch")
+
+	// Create test data with mismatched max index
+	mismatchedMaxExitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+		pubkey2: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 103, // Different max index
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test with mismatched max index
+	err = validateIndicesMatch(mismatchedMaxExitsByPubkey)
+	assert.Error(t, err, "Expected error for mismatched max indices")
+	assert.Contains(t, err.Error(), "maximum validator index mismatch")
+
+	// Test with a single pubkey (should be valid)
+	singlePubkeyExits := map[string]*ValidatorExits{
+		pubkey1: exitsByPubkey[pubkey1],
+	}
+	err = validateIndicesMatch(singlePubkeyExits)
+	assert.NoError(t, err, "Expected no error for single pubkey")
+
+	// Test with empty exits
+	emptyExitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{},
+		},
+		pubkey2: exitsByPubkey[pubkey2],
+	}
+	err = validateIndicesMatch(emptyExitsByPubkey)
+	assert.Error(t, err, "Expected error for empty exits")
+	assert.Contains(t, err.Error(), "no exits found for pubkey")
+}
+
+// Add test for validateExits calling validateIndicesMatch
+func TestValidateExitsWithIndicesMatch(t *testing.T) {
+	// Create test data with matching indices
+	pubkey1 := "pubkey1"
+	pubkey2 := "pubkey2"
+
+	matchingExitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+		pubkey2: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test validateExits with matching indices
+	err := validateExits(matchingExitsByPubkey, 2)
+	assert.NoError(t, err, "Expected no error for matching indices")
+
+	// Create test data with mismatched indices
+	mismatchedExitsByPubkey := map[string]*ValidatorExits{
+		pubkey1: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 100,
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101,
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+		pubkey2: {
+			Exits: []*VoluntaryExit{
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 101, // Different min
+							Epoch:          1,
+						},
+					},
+				},
+				{
+					PBExit: &ethpb.SignedVoluntaryExit{
+						Exit: &ethpb.VoluntaryExit{
+							ValidatorIndex: 102, // Different max
+							Epoch:          1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test validateExits with mismatched indices
+	err = validateExits(mismatchedExitsByPubkey, 2)
+	assert.Error(t, err, "Expected error for mismatched indices")
+	assert.Contains(t, err.Error(), "minimum validator index mismatch")
 }
