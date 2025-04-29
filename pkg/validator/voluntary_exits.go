@@ -181,6 +181,11 @@ func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error
 		return fmt.Errorf("no voluntary exits found")
 	}
 
+	// Check that min and max validator indices match across all pubkeys
+	if err := validateIndicesMatch(exitsByPubkey); err != nil {
+		return err
+	}
+
 	for pubkey, validatorExits := range exitsByPubkey {
 		total := uint64(validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex - validatorExits.Exits[0].PBExit.Exit.ValidatorIndex + 1)
 
@@ -190,6 +195,56 @@ func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error
 
 		if numExits > 0 && len(validatorExits.Exits) != numExits {
 			return fmt.Errorf("expected %d exits for pubkey %s but found %d", numExits, pubkey, len(validatorExits.Exits))
+		}
+	}
+
+	return nil
+}
+
+// validateIndicesMatch ensures the min and max validator indices match across all pubkeys
+func validateIndicesMatch(exitsByPubkey map[string]*ValidatorExits) error {
+	if len(exitsByPubkey) <= 1 {
+		return nil // Nothing to compare with a single pubkey
+	}
+
+	var firstPubkey string
+
+	var firstMin, firstMax primitives.ValidatorIndex
+
+	// Initialize with the first pubkey's values
+	for pubkey, validatorExits := range exitsByPubkey {
+		if len(validatorExits.Exits) == 0 {
+			return fmt.Errorf("no exits found for pubkey %s", pubkey)
+		}
+
+		firstPubkey = pubkey
+		firstMin = validatorExits.Exits[0].PBExit.Exit.ValidatorIndex
+		firstMax = validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex
+
+		break
+	}
+
+	// Compare with all other pubkeys
+	for pubkey, validatorExits := range exitsByPubkey {
+		if pubkey == firstPubkey {
+			continue
+		}
+
+		if len(validatorExits.Exits) == 0 {
+			return fmt.Errorf("no exits found for pubkey %s", pubkey)
+		}
+
+		currentMin := validatorExits.Exits[0].PBExit.Exit.ValidatorIndex
+		currentMax := validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex
+
+		if currentMin != firstMin {
+			return fmt.Errorf("minimum validator index mismatch: %d for pubkey %s vs %d for pubkey %s",
+				currentMin, pubkey, firstMin, firstPubkey)
+		}
+
+		if currentMax != firstMax {
+			return fmt.Errorf("maximum validator index mismatch: %d for pubkey %s vs %d for pubkey %s",
+				currentMax, pubkey, firstMax, firstPubkey)
 		}
 	}
 
@@ -260,9 +315,19 @@ func readExitFile(filePath string) (*VoluntaryExit, error) {
 
 // Verify verifies all voluntary exits
 func (e *VoluntaryExits) Verify() error {
+	var firstIndex, lastIndex primitives.ValidatorIndex
+
+	var initialized bool
+
 	for pubkey, validatorExits := range e.ExitsByPubkey {
 		log := log.WithField("pubkey", pubkey)
 		verifiedCount := 0
+
+		if !initialized && len(validatorExits.Exits) > 0 {
+			firstIndex = validatorExits.Exits[0].PBExit.Exit.ValidatorIndex
+			lastIndex = validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex
+			initialized = true
+		}
 
 		for _, exit := range validatorExits.Exits {
 			if err := validatorExits.State.AppendValidator(&ethpb.Validator{
@@ -298,6 +363,15 @@ func (e *VoluntaryExits) Verify() error {
 			"total":    len(validatorExits.Exits),
 		}).Info("Exits verified")
 	}
+
+	log.WithFields(logrus.Fields{
+		"first_validator_index": firstIndex,
+		"last_validator_index":  lastIndex,
+		"network":               params.BeaconConfig().ConfigName,
+	}).Info("Please check that the latest live validator index sits between these values.")
+
+	log.Info("You can use a command like this to check the current highest finalized validator index: \n\n" +
+		"curl -H \"Content-Type: application/json\" http://localhost:5052/eth/v1/beacon/states/finalized/validators | jq -r '[.data[].index | tonumber] | max' \n\n")
 
 	return nil
 }
