@@ -1,0 +1,57 @@
+---
+description: Go coding standards for validator-tools
+alwaysApply: true
+---
+
+# Code Standards
+
+## Go Conventions
+- Follow standard Go formatting (`gofmt`)
+- Use `go mod` for dependency management
+- Package names should be lowercase, single words
+- Interface names should be descriptive (avoid generic names like `Handler`)
+
+## Project-Specific Patterns
+
+### Command Structure
+- All CLI commands live in `cmd/` package
+- Each command has its own file (e.g., `generate.go`, `verify.go`)
+- Commands use Cobra framework patterns
+- Always add commands to root in `init()` functions
+
+### Business Logic
+- Core logic belongs in `pkg/validator/` package
+- Separate concerns: data structures in `types.go`, operations in dedicated files
+- Use structured logging with logrus
+- Handle errors explicitly, don't ignore them
+
+### File Organization
+- Test files follow `*_test.go` naming
+- Configuration and data structures in separate files
+- Worker/concurrent operations in dedicated files
+- External tool integrations (like ethdo) in separate files
+
+### Error Handling
+- Use `github.com/pkg/errors` for error wrapping
+- Provide context in error messages
+- Log errors at appropriate levels
+- Fail fast when configuration is invalid
+
+### Logging
+- Use logrus for structured logging
+- Include relevant context fields
+- Use appropriate log levels (Info, Warn, Error, Debug)
+- Don't log sensitive data like private keys or passphrases
+
+### Concurrency
+- Use worker pools for batch operations
+- Implement proper cancellation with context
+- Handle goroutine cleanup properly
+- Use channels for coordination between workers
+
+## Naming Conventions
+- Constants: `UPPER_SNAKE_CASE` or `CamelCase` depending on visibility
+- Types: `PascalCase`
+- Functions/methods: `camelCase` for private, `PascalCase` for public
+- Variables: `camelCase`
+- Files: `snake_case.go`
