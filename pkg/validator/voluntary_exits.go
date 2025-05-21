@@ -374,6 +374,7 @@ func (e *VoluntaryExits) Extract(beaconURL, outputDir string) error {
 	resp, err := generator.FetchJSON(beaconURL + "/eth/v1/beacon/states/finalized/validators")
 	if err != nil {
 		log.WithError(err).Error("Failed to fetch validator data from beacon API")
+
 		return err
 	}
 
@@ -391,12 +392,14 @@ func (e *VoluntaryExits) Extract(beaconURL, outputDir string) error {
 
 	if err := json.Unmarshal(resp, &validatorResponse); err != nil {
 		log.WithError(err).Error("Failed to parse validator response")
+
 		return err
 	}
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		log.WithError(err).WithField("output_dir", outputDir).Error("Failed to create output directory")
+
 		return err
 	}
 

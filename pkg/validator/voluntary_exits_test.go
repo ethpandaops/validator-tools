@@ -510,6 +510,7 @@ func TestValidateCount(t *testing.T) {
 			err := tt.exits.ValidateCount(tt.numExits)
 			if tt.expectError {
 				require.Error(t, err)
+
 				if tt.errorText != "" {
 					assert.Contains(t, err.Error(), tt.errorText)
 				}
@@ -796,7 +797,7 @@ func TestCopyFile(t *testing.T) {
 	// Create source file
 	sourceContent := "test content"
 	sourcePath := filepath.Join(tempDir, "source.txt")
-	err := os.WriteFile(sourcePath, []byte(sourceContent), 0644)
+	err := os.WriteFile(sourcePath, []byte(sourceContent), 0600)
 	require.NoError(t, err)
 
 	// Test successful copy
@@ -847,18 +848,20 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 		"signature": "0xabcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef"
 	}`
 
-	err := os.WriteFile(exitFile1, []byte(exitContent1), 0644)
+	err := os.WriteFile(exitFile1, []byte(exitContent1), 0600)
 	require.NoError(t, err)
-	err = os.WriteFile(exitFile2, []byte(exitContent2), 0644)
+	err = os.WriteFile(exitFile2, []byte(exitContent2), 0600)
 	require.NoError(t, err)
 
 	// Change to temp directory so files can be found
 	originalDir, err := os.Getwd()
 	require.NoError(t, err)
+
 	defer func() {
-		err := os.Chdir(originalDir)
-		require.NoError(t, err)
+		chdirErr := os.Chdir(originalDir)
+		require.NoError(t, chdirErr)
 	}()
+
 	err = os.Chdir(tempDir)
 	require.NoError(t, err)
 
@@ -902,6 +905,7 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 			},
 			expectError: false,
 			validateOutput: func(t *testing.T) {
+				t.Helper()
 				// Check that files were copied
 				_, err := os.Stat(filepath.Join(outputDir, "100-"+testPubkey1+".json"))
 				assert.NoError(t, err)
@@ -1052,13 +1056,16 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 
 			if tt.expectError {
 				require.Error(t, err)
+
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
+
 				return
 			}
 
 			require.NoError(t, err)
+
 			if tt.validateOutput != nil {
 				tt.validateOutput(t)
 			}
@@ -1091,7 +1098,7 @@ func extractWithMock(e *VoluntaryExits, beaconURL, outputDir string, mockGen *mo
 	}
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return err
 	}
 
