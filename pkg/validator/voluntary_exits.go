@@ -462,6 +462,7 @@ func (e *VoluntaryExits) Extract(beaconURL, outputDir string) error {
 					"source": exit.Path,
 					"dest":   destFilePath,
 				}).Error("Failed to copy file")
+
 				return err
 			}
 		}
@@ -477,6 +478,7 @@ func (e *VoluntaryExits) Extract(beaconURL, outputDir string) error {
 	}
 
 	log.WithField("count", len(processedValidators)).Info("Successfully extracted all validator exit files")
+
 	return nil
 }
 

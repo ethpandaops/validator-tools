@@ -785,9 +785,11 @@ func (m *mockHTTPGenerator) FetchJSON(url string) ([]byte, error) {
 	if err, exists := m.errors[url]; exists {
 		return nil, err
 	}
+
 	if resp, exists := m.responses[url]; exists {
 		return resp, nil
 	}
+
 	return nil, fmt.Errorf("no mock response for URL: %s", url)
 }
 
@@ -797,7 +799,7 @@ func TestCopyFile(t *testing.T) {
 	// Create source file
 	sourceContent := "test content"
 	sourcePath := filepath.Join(tempDir, "source.txt")
-	err := os.WriteFile(sourcePath, []byte(sourceContent), 0600)
+	err := os.WriteFile(sourcePath, []byte(sourceContent), 0o600)
 	require.NoError(t, err)
 
 	// Test successful copy
@@ -848,9 +850,9 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 		"signature": "0xabcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef"
 	}`
 
-	err := os.WriteFile(exitFile1, []byte(exitContent1), 0600)
+	err := os.WriteFile(exitFile1, []byte(exitContent1), 0o600)
 	require.NoError(t, err)
-	err = os.WriteFile(exitFile2, []byte(exitContent2), 0600)
+	err = os.WriteFile(exitFile2, []byte(exitContent2), 0o600)
 	require.NoError(t, err)
 
 	// Change to temp directory so files can be found
