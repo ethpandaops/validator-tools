@@ -497,5 +497,6 @@ func copyFile(src, dst string) error {
 	defer destFile.Close()
 
 	_, err = destFile.ReadFrom(sourceFile)
+
 	return err
 }

@@ -943,6 +943,7 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 			name: "validator not found in beacon state",
 			setupMock: func() *mockHTTPGenerator {
 				emptyResponse := `{"data": []}`
+
 				return &mockHTTPGenerator{
 					responses: map[string][]byte{
 						"http://localhost:5052/eth/v1/beacon/states/finalized/validators": []byte(emptyResponse),
@@ -967,6 +968,7 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 						}
 					]
 				}`
+
 				return &mockHTTPGenerator{
 					responses: map[string][]byte{
 						"http://localhost:5052/eth/v1/beacon/states/finalized/validators": []byte(inactiveResponse),
@@ -991,6 +993,7 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 						}
 					]
 				}`
+
 				return &mockHTTPGenerator{
 					responses: map[string][]byte{
 						"http://localhost:5052/eth/v1/beacon/states/finalized/validators": []byte(mismatchResponse),
