@@ -1,0 +1,43 @@
+---
+description: Ethereum validator tools project architecture
+alwaysApply: true
+---
+
+# Project Architecture
+
+## Overview
+This is a CLI tool for Ethereum validator operations, built in Go using the Cobra framework. The project provides utilities for deposit data verification and voluntary exit generation/verification.
+
+## Project Structure
+- `main.go` - Entry point that delegates to cmd package
+- `cmd/` - Command-line interface using Cobra framework
+  - `root.go` - Root command definition
+  - `generate*.go` - Commands for generating validator data
+  - `verify*.go` - Commands for verifying validator data  
+  - `extract*.go` - Commands for extracting validator data
+- `pkg/validator/` - Core business logic
+  - `types.go` - Data structures for validator operations
+  - `deposit_data.go` - Deposit data handling
+  - `voluntary_exits.go` - Voluntary exit operations
+  - `generator.go` - Generation utilities
+  - `worker.go` - Concurrent processing utilities
+  - `ethdo.go` - Integration with ethdo tool
+
+## Key Technologies
+- **Go 1.24** - Primary language
+- **Cobra** - CLI framework for command structure
+- **Prysm** - Ethereum consensus client library for validator operations
+- **logrus** - Structured logging
+- **ethdo** - External dependency for keystore operations
+
+## External Dependencies
+- `ethdo` - Required for keystore operations
+- `jq` - JSON processing utility
+- `curl` - HTTP client for beacon node communication
+
+## Data Flow
+1. Commands parse CLI arguments and flags
+2. Core logic in pkg/validator processes requests
+3. Integration with beacon nodes via HTTP APIs
+4. File I/O for keystores, deposits, and exit data
+5. Concurrent processing for batch operations

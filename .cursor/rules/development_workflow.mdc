@@ -1,0 +1,56 @@
+---
+description: Development workflow and practices for validator-tools
+alwaysApply: true
+---
+
+# Development Workflow
+
+## Git Workflow
+- Main branch: `master`
+- Feature branches: Use descriptive names
+- Commit messages should be clear and descriptive
+- Keep commits atomic and focused
+
+## Testing Requirements
+- All new functionality must include tests
+- Test files follow `*_test.go` naming convention
+- Use `testify` library for assertions (already in dependencies)
+- Run tests with `go test ./...`
+- Maintain test coverage for critical paths
+
+## Build and Dependencies
+- Use `go mod tidy` to manage dependencies
+- Ensure compatibility with Go 1.24+
+- Build with `go build` or use provided Dockerfile
+- External dependencies: ethdo, jq, curl must be available at runtime
+
+## Code Quality
+- Run `go fmt` before committing
+- Use `go vet` for static analysis
+- Follow Go best practices and idioms
+- Review error handling patterns
+
+## Documentation
+- Document public APIs with Go doc comments
+- Update README.md for CLI usage examples
+- Include examples in command help text
+- Document any new external dependencies
+
+## Security Considerations
+- Never log or expose private keys, passphrases, or sensitive data
+- Validate all user inputs
+- Use secure defaults for cryptographic operations
+- Audit external tool integrations (ethdo)
+
+## Ethereum Validator Specifics
+- Follow Ethereum specification for data formats
+- Validate against known networks (mainnet, holesky, hoodi)
+- Ensure compatibility with beacon node APIs
+- Handle epoch boundaries and timing correctly
+- Validate withdrawal credentials format
+
+## CI/CD Expectations
+- All tests must pass
+- No build warnings
+- Docker builds must succeed
+- Release artifacts built with goreleaser
