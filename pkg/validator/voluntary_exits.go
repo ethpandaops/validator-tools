@@ -34,6 +34,7 @@ type ValidatorExits struct {
 type VoluntaryExit struct {
 	PBExit *ethpb.SignedVoluntaryExit
 	Pubkey []byte
+	Path   string
 }
 
 // SignedVoluntaryExit represents the JSON structure of a signed voluntary exit
@@ -45,8 +46,13 @@ type SignedVoluntaryExit struct {
 	Signature string `json:"signature"`
 }
 
+type VerifyResponse struct {
+	FirstIndex uint64 `json:"first_index"`
+	LastIndex  uint64 `json:"last_index"`
+}
+
 // NewVoluntaryExits creates a new VoluntaryExits instance
-func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int, expectedPubkeys []string) (*VoluntaryExits, error) {
+func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []string) (*VoluntaryExits, error) {
 	if err := setNetwork(network); err != nil {
 		log.WithError(err).WithField("network", network).Error("Failed to set network")
 
@@ -103,12 +109,6 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, numExits int, expe
 		if _, found := exitsByPubkey[pubkey]; !found {
 			return nil, fmt.Errorf("expected pubkey not found: %s", pubkey)
 		}
-	}
-
-	if vErr := validateExits(exitsByPubkey, numExits); vErr != nil {
-		log.WithError(vErr).Error("Failed to validate exits")
-
-		return nil, vErr
 	}
 
 	creds, err := hex.DecodeString(strings.TrimPrefix(withdrawalCreds, "0x"))
@@ -175,18 +175,13 @@ func initializeExitState(exitsByPubkey map[string]*ValidatorExits, pubkeyStr str
 	return nil
 }
 
-// validateExits validates the number and sequence of exits
-func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error {
-	if len(exitsByPubkey) == 0 {
+// CheckCount validates the number and sequence of exits
+func (e *VoluntaryExits) ValidateCount(numExits int) error {
+	if len(e.ExitsByPubkey) == 0 {
 		return fmt.Errorf("no voluntary exits found")
 	}
 
-	// Check that min and max validator indices match across all pubkeys
-	if err := validateIndicesMatch(exitsByPubkey); err != nil {
-		return err
-	}
-
-	for pubkey, validatorExits := range exitsByPubkey {
+	for pubkey, validatorExits := range e.ExitsByPubkey {
 		total := uint64(validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex - validatorExits.Exits[0].PBExit.Exit.ValidatorIndex + 1)
 
 		if total != uint64(len(validatorExits.Exits)) {
@@ -202,8 +197,8 @@ func validateExits(exitsByPubkey map[string]*ValidatorExits, numExits int) error
 }
 
 // validateIndicesMatch ensures the min and max validator indices match across all pubkeys
-func validateIndicesMatch(exitsByPubkey map[string]*ValidatorExits) error {
-	if len(exitsByPubkey) <= 1 {
+func (e *VoluntaryExits) ValidateIndices() error {
+	if len(e.ExitsByPubkey) <= 1 {
 		return nil // Nothing to compare with a single pubkey
 	}
 
@@ -212,7 +207,7 @@ func validateIndicesMatch(exitsByPubkey map[string]*ValidatorExits) error {
 	var firstMin, firstMax primitives.ValidatorIndex
 
 	// Initialize with the first pubkey's values
-	for pubkey, validatorExits := range exitsByPubkey {
+	for pubkey, validatorExits := range e.ExitsByPubkey {
 		if len(validatorExits.Exits) == 0 {
 			return fmt.Errorf("no exits found for pubkey %s", pubkey)
 		}
@@ -225,7 +220,7 @@ func validateIndicesMatch(exitsByPubkey map[string]*ValidatorExits) error {
 	}
 
 	// Compare with all other pubkeys
-	for pubkey, validatorExits := range exitsByPubkey {
+	for pubkey, validatorExits := range e.ExitsByPubkey {
 		if pubkey == firstPubkey {
 			continue
 		}
@@ -310,11 +305,12 @@ func readExitFile(filePath string) (*VoluntaryExit, error) {
 			Signature: signature,
 		},
 		Pubkey: pubkey,
+		Path:   filePath,
 	}, nil
 }
 
 // Verify verifies all voluntary exits
-func (e *VoluntaryExits) Verify() error {
+func (e *VoluntaryExits) Verify() (*VerifyResponse, error) {
 	var firstIndex, lastIndex primitives.ValidatorIndex
 
 	var initialized bool
@@ -337,20 +333,20 @@ func (e *VoluntaryExits) Verify() error {
 			}); err != nil {
 				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to append validator")
 
-				return err
+				return nil, err
 			}
 
 			validator, err := validatorExits.State.ValidatorAtIndexReadOnly(exit.PBExit.Exit.ValidatorIndex)
 			if err != nil {
 				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to get validator")
 
-				return err
+				return nil, err
 			}
 
 			if err := blocks.VerifyExitAndSignature(validator, validatorExits.State, exit.PBExit); err != nil {
 				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to verify exit and signature")
 
-				return err
+				return nil, err
 			}
 
 			verifiedCount++
@@ -364,14 +360,137 @@ func (e *VoluntaryExits) Verify() error {
 		}).Info("Exits verified")
 	}
 
-	log.WithFields(logrus.Fields{
-		"first_validator_index": firstIndex,
-		"last_validator_index":  lastIndex,
-		"network":               params.BeaconConfig().ConfigName,
-	}).Info("Please check that the latest live validator index sits between these values.")
+	return &VerifyResponse{
+		FirstIndex: uint64(firstIndex),
+		LastIndex:  uint64(lastIndex),
+	}, nil
+}
 
-	log.Info("You can use a command like this to check the current highest finalized validator index: \n\n" +
-		"curl -H \"Content-Type: application/json\" http://localhost:5052/eth/v1/beacon/states/finalized/validators | jq -r '[.data[].index | tonumber] | max' \n\n")
+func (e *VoluntaryExits) Extract(beaconURL, outputDir string) error {
+	// Create a VoluntaryExitGenerator to use the FetchJSON method
+	generator := &VoluntaryExitGenerator{BeaconURL: beaconURL}
 
+	// Fetch validator data from beacon API
+	resp, err := generator.FetchJSON(beaconURL + "/eth/v1/beacon/states/finalized/validators")
+	if err != nil {
+		log.WithError(err).Error("Failed to fetch validator data from beacon API")
+		return err
+	}
+
+	// Parse API response
+	var validatorResponse struct {
+		Data []struct {
+			Index     string `json:"index"`
+			Validator struct {
+				Pubkey                string `json:"pubkey"`
+				WithdrawalCredentials string `json:"withdrawal_credentials"`
+			} `json:"validator"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(resp, &validatorResponse); err != nil {
+		log.WithError(err).Error("Failed to parse validator response")
+		return err
+	}
+
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.WithError(err).WithField("output_dir", outputDir).Error("Failed to create output directory")
+		return err
+	}
+
+	// Create map of pubkey -> validator info for active validators
+	validatorMap := make(map[string]struct {
+		index  string
+		status string
+	})
+
+	for _, validator := range validatorResponse.Data {
+		// Remove 0x prefix if present
+		pubkey := strings.TrimPrefix(validator.Validator.Pubkey, "0x")
+		validatorMap[pubkey] = struct {
+			index  string
+			status string
+		}{
+			index:  validator.Index,
+			status: validator.Status,
+		}
+	}
+
+	// Track which validators we've processed
+	processedValidators := make(map[string]bool)
+
+	// For each pubkey in our exit data, find the matching validator and copy files
+	for pubkey, validatorExits := range e.ExitsByPubkey {
+		validatorInfo, exists := validatorMap[pubkey]
+		if !exists {
+			return fmt.Errorf("validator with pubkey %s not found in beacon state", pubkey)
+		}
+
+		// Check if validator is active (can be active_ongoing, active_exiting, etc.)
+		if !strings.HasPrefix(validatorInfo.status, "active") && validatorInfo.status != "pending_initialized" && validatorInfo.status != "pending_queued" {
+			return fmt.Errorf("validator with pubkey %s is not active (status: %s)", pubkey, validatorInfo.status)
+		}
+
+		log.WithFields(logrus.Fields{
+			"pubkey": pubkey,
+			"index":  validatorInfo.index,
+			"status": validatorInfo.status,
+		}).Info("Extracting exit files for validator")
+
+		// For each exit file for this validator
+		for _, exit := range validatorExits.Exits {
+			expectedIndex := fmt.Sprintf("%d", exit.PBExit.Exit.ValidatorIndex)
+
+			// Verify the validator index matches what we expect
+			if validatorInfo.index != expectedIndex {
+				continue
+			}
+
+			// Find the source file
+			sourceFileName := fmt.Sprintf("%s-%s.json", expectedIndex, pubkey)
+
+			// Copy file to output directory
+			destFilePath := filepath.Join(outputDir, sourceFileName)
+
+			if err := copyFile(exit.Path, destFilePath); err != nil {
+				log.WithError(err).WithFields(logrus.Fields{
+					"source": exit.Path,
+					"dest":   destFilePath,
+				}).Error("Failed to copy file")
+				return err
+			}
+		}
+
+		processedValidators[pubkey] = true
+	}
+
+	// Verify all expected validators were processed
+	for pubkey := range e.ExitsByPubkey {
+		if !processedValidators[pubkey] {
+			return fmt.Errorf("validator %s was not processed", pubkey)
+		}
+	}
+
+	log.WithField("count", len(processedValidators)).Info("Successfully extracted all validator exit files")
 	return nil
+}
+
+// copyFile copies a file from source to destination
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = destFile.ReadFrom(sourceFile)
+	return err
 }
