@@ -17,6 +17,89 @@ import (
 
 const testPubkeyHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+// Helper function to create test exit files for benchmarks
+func createBenchmarkExitFiles(b *testing.B, dir string, numFiles int, pubkey string) {
+	for i := 0; i < numFiles; i++ {
+		exit := SignedVoluntaryExit{
+			Message: struct {
+				Epoch          string `json:"epoch"`
+				ValidatorIndex string `json:"validator_index"`
+			}{
+				Epoch:          "100",
+				ValidatorIndex: fmt.Sprintf("%d", i),
+			},
+			Signature: "0x" + hex.EncodeToString(make([]byte, 96)),
+		}
+
+		data, err := json.Marshal(exit)
+		require.NoError(b, err)
+
+		filename := fmt.Sprintf("%d-%s.json", i, pubkey)
+		err = os.WriteFile(filepath.Join(dir, filename), data, 0644)
+		require.NoError(b, err)
+	}
+}
+
+// BenchmarkNewVoluntaryExitsSequential benchmarks the original sequential implementation
+func BenchmarkNewVoluntaryExitsSequential(b *testing.B) {
+	// Create temp directory
+	dir, err := os.MkdirTemp("", "exits_bench_*")
+	require.NoError(b, err)
+	defer os.RemoveAll(dir)
+
+	// Test with different file counts
+	fileCounts := []int{10, 50, 100, 500}
+	pubkey := "0x" + hex.EncodeToString(make([]byte, 48))
+
+	for _, count := range fileCounts {
+		b.Run(fmt.Sprintf("files_%d", count), func(b *testing.B) {
+			// Create test files
+			testDir := filepath.Join(dir, fmt.Sprintf("test_%d", count))
+			err := os.MkdirAll(testDir, 0755)
+			require.NoError(b, err)
+			createBenchmarkExitFiles(b, testDir, count, pubkey[2:])
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := NewVoluntaryExitsSequential(testDir, "mainnet", "0x0100000000000000000000000000000000000000000000000000000000000000", []string{pubkey})
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkNewVoluntaryExitsOptimized benchmarks the optimized parallel implementation
+func BenchmarkNewVoluntaryExitsOptimized(b *testing.B) {
+	// Create temp directory
+	dir, err := os.MkdirTemp("", "exits_bench_*")
+	require.NoError(b, err)
+	defer os.RemoveAll(dir)
+
+	// Test with different file counts
+	fileCounts := []int{10, 50, 100, 500}
+	pubkey := "0x" + hex.EncodeToString(make([]byte, 48))
+
+	for _, count := range fileCounts {
+		b.Run(fmt.Sprintf("files_%d", count), func(b *testing.B) {
+			// Create test files
+			testDir := filepath.Join(dir, fmt.Sprintf("test_%d", count))
+			err := os.MkdirAll(testDir, 0755)
+			require.NoError(b, err)
+			createBenchmarkExitFiles(b, testDir, count, pubkey[2:])
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := NewVoluntaryExitsOptimized(testDir, "mainnet", "0x0100000000000000000000000000000000000000000000000000000000000000", []string{pubkey})
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestSetNetwork(t *testing.T) {
 	tests := []struct {
 		name        string
