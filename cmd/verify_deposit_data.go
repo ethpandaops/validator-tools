@@ -19,10 +19,10 @@ var (
 	verifyExpectedCount          int
 )
 
-// Function signature type for verifyDepositData
+// Function signature type for verifyDepositData.
 type verifyDepositDataFunc func() error
 
-// Default implementation
+// Default implementation.
 var verifyDepositData verifyDepositDataFunc = func() error {
 	depositData, err := validator.NewData(
 		verifyDepositDataInput,
@@ -62,7 +62,7 @@ var verifyDepositDataCmd = &cobra.Command{
 	Use:   "deposit_data",
 	Short: "Verify deposit data",
 	Long:  `Verifies and validates deposit data file format and contents.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		return verifyDepositData()
 	},
 	// Don't show usage on error

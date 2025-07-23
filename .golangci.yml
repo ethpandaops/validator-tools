@@ -43,6 +43,12 @@ linters:
     - nlreturn # too opinionated
     - wsl # too opinionated
 
+  exclusions:
+    rules:
+      - path: cmd
+        linters:
+          - gochecknoglobals
+
 linters-settings:
   dupl:
     threshold: 150

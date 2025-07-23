@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// processExitTasks processes validator exit tasks using a worker pool
+// processExitTasks processes validator exit tasks using a worker pool.
 func (g *VoluntaryExitGenerator) processExitTasks(tasks chan exitTask, config *BeaconConfig, keystoreNum int32) error {
 	var wg sync.WaitGroup
 
@@ -49,7 +49,7 @@ func (g *VoluntaryExitGenerator) processExitTasks(tasks chan exitTask, config *B
 	return nil
 }
 
-// worker processes exit tasks
+// worker processes exit tasks.
 func (g *VoluntaryExitGenerator) worker(id int, tasks chan exitTask, wg *sync.WaitGroup, errChan chan error, completedExits *uint64, config *BeaconConfig) {
 	defer wg.Done()
 
@@ -61,7 +61,11 @@ func (g *VoluntaryExitGenerator) worker(id int, tasks chan exitTask, wg *sync.Wa
 		return
 	}
 
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			log.WithError(err).WithField("worker", id).Error("Failed to remove temp dir")
+		}
+	}()
 
 	workerLog := log.WithField("worker", id)
 	workerLog.Debugf("Worker started with temp dir: %s", tmpDir)
@@ -71,7 +75,7 @@ func (g *VoluntaryExitGenerator) worker(id int, tasks chan exitTask, wg *sync.Wa
 
 		prepFile := PrepFile{
 			Version: "3",
-			Validators: []ValidatorInfo{
+			Validators: []Info{
 				{
 					Index:                 strconv.Itoa(task.validatorIndex),
 					Pubkey:                task.pubkey,
@@ -118,7 +122,7 @@ func (g *VoluntaryExitGenerator) worker(id int, tasks chan exitTask, wg *sync.Wa
 	}
 }
 
-// reportProgress reports progress of exit generation
+// reportProgress reports progress of exit generation.
 func (g *VoluntaryExitGenerator) reportProgress(keystoreNum int32, completedExits *uint64, stop chan struct{}) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

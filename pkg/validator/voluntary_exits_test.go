@@ -13,13 +13,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testPubkey1 = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	testPubkey2 = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+)
+
 func TestPreValidateExits(t *testing.T) {
 	// Create temp directory
 	tempDir := t.TempDir()
 
 	// Test data
-	pubkey1 := "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-	pubkey2 := "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	pubkey1 := testPubkey1
+	pubkey2 := testPubkey2
 	expectedPubkeys := []string{pubkey1, pubkey2}
 
 	// Create test exit files
@@ -55,7 +60,7 @@ func TestPreValidateExitsUnexpectedPubkey(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Test data
-	pubkey1 := "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	pubkey1 := testPubkey1
 	unexpectedPubkey := "0xffffffff90abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
 	expectedPubkeys := []string{pubkey1}
 
@@ -74,8 +79,8 @@ func TestPreValidateExitsMissingPubkey(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Test data
-	pubkey1 := "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-	pubkey2 := "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	pubkey1 := testPubkey1
+	pubkey2 := testPubkey2
 	expectedPubkeys := []string{pubkey1, pubkey2}
 
 	// Create test exit file for only one pubkey
@@ -92,7 +97,7 @@ func TestValidatorIndexMismatch(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Test data
-	pubkey := "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	pubkey := testPubkey1
 
 	// Create a file with mismatched indices
 	filename := fmt.Sprintf("%s-%s.json", "100", pubkey)
@@ -110,7 +115,7 @@ func TestValidatorIndexMismatch(t *testing.T) {
 	data, err := json.Marshal(exitData)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(tempDir, filename), data, 0644)
+	err = os.WriteFile(filepath.Join(tempDir, filename), data, 0600)
 	require.NoError(t, err)
 
 	// Test reading the file
@@ -242,8 +247,8 @@ func TestVoluntaryExitsVerification(t *testing.T) {
 	params.OverrideBeaconConfig(params.MainnetConfig())
 
 	// Test data
-	pubkey1 := "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-	pubkey2 := "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	pubkey1 := testPubkey1
+	pubkey2 := testPubkey2
 	expectedPubkeys := []string{pubkey1, pubkey2}
 
 	// Create test exit files
@@ -273,7 +278,7 @@ func TestVoluntaryExitsVerification(t *testing.T) {
 	assert.Equal(t, uint64(101), exits.Metadata.MaxIndex)
 }
 
-// Helper function to create test exit files
+// Helper function to create test exit files.
 func createTestExitFile(t *testing.T, dir, validatorIndex, pubkey string) {
 	filename := fmt.Sprintf("%s-%s.json", validatorIndex, pubkey)
 	exitData := SignedVoluntaryExit{
@@ -290,6 +295,6 @@ func createTestExitFile(t *testing.T, dir, validatorIndex, pubkey string) {
 	data, err := json.Marshal(exitData)
 	require.NoError(t, err)
 
-	err = os.WriteFile(filepath.Join(dir, filename), data, 0644)
+	err = os.WriteFile(filepath.Join(dir, filename), data, 0600)
 	require.NoError(t, err)
 }

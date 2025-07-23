@@ -23,10 +23,11 @@ var (
 )
 
 var verifyVoluntaryExitsCmd = &cobra.Command{
-	Use:   "voluntary_exits",
-	Short: "Verify voluntary exit messages",
-	Long:  `Verify voluntary exit messages for Ethereum validators.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Use:          "voluntary_exits",
+	Short:        "Verify voluntary exit messages",
+	Long:         `Verify voluntary exit messages for Ethereum validators.`,
+	SilenceUsage: true,
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if verifyExitsWorkers < 1 {
 			return errors.New("number of workers must be at least 1")
 		}

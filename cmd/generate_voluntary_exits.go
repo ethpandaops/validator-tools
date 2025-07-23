@@ -37,7 +37,8 @@ It requires ethdo, jq, and curl to be installed on the system.
 The command supports parallel processing using multiple workers, each with its own
 temporary directory for ethdo operations. The number of workers can be specified
 with the --workers flag, defaulting to the number of CPU cores.`,
-	RunE: runGenerateVoluntaryExits,
+	SilenceUsage: true,
+	RunE:         runGenerateVoluntaryExits,
 }
 
 func init() {
@@ -82,7 +83,7 @@ func init() {
 	}
 }
 
-func runGenerateVoluntaryExits(cmd *cobra.Command, args []string) error {
+func runGenerateVoluntaryExits(_ *cobra.Command, _ []string) error {
 	if voluntaryExitsWorkers < 1 {
 		return errors.New("number of workers must be at least 1")
 	}
@@ -91,7 +92,7 @@ func runGenerateVoluntaryExits(cmd *cobra.Command, args []string) error {
 		return errors.Errorf("Required command 'ethdo' not found. Please install it first.\nFor ethdo, please visit: https://github.com/wealdtech/ethdo")
 	}
 
-	if err := os.MkdirAll(voluntaryExitsOutputDir, 0o755); err != nil {
+	if err := os.MkdirAll(voluntaryExitsOutputDir, 0o750); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
 	}
 

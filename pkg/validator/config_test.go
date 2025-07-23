@@ -34,7 +34,7 @@ func TestFetchJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.responseCode)
 				_, err := w.Write([]byte(tt.responseBody))
 				require.NoError(t, err)
@@ -168,7 +168,8 @@ func TestFetchBeaconConfig(t *testing.T) {
 
 			require.NoError(t, err)
 
-			if tt.name == "successful fetch" {
+			switch tt.name {
+			case "successful fetch":
 				assert.Equal(t, "0x1234", config.GenesisValidatorsRoot)
 				assert.Equal(t, "0x5678", config.GenesisVersion)
 				assert.Equal(t, "1000", config.Epoch)
@@ -176,7 +177,7 @@ func TestFetchBeaconConfig(t *testing.T) {
 				assert.Equal(t, "0xdef0", config.CurrentForkVersion)
 				assert.Equal(t, "0x0abc", config.BlsToExecutionChangeDomain)
 				assert.Equal(t, "0x0def", config.VoluntaryExitDomain)
-			} else if tt.name == "empty responses" {
+			case "empty responses":
 				assert.Equal(t, "", config.GenesisValidatorsRoot)
 				assert.Equal(t, "", config.GenesisVersion)
 				assert.Equal(t, "0", config.Epoch)

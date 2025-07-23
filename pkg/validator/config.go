@@ -1,3 +1,4 @@
+// Package validator provides functionality for working with Ethereum validators, including deposit data verification and voluntary exit generation.
 package validator
 
 import (
@@ -9,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// FetchJSON fetches and returns JSON data from a URL
+// FetchJSON fetches and returns JSON data from a URL.
 func (g *VoluntaryExitGenerator) FetchJSON(url string) ([]byte, error) {
 	log.Infof("Fetching JSON from URL: %s", url)
 
@@ -30,7 +31,11 @@ func (g *VoluntaryExitGenerator) FetchJSON(url string) ([]byte, error) {
 
 		return nil, errors.Wrap(err, "failed to fetch URL")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.WithError(err).Error("Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Errorf("HTTP request failed with status: %s", resp.Status)
@@ -50,6 +55,7 @@ func (g *VoluntaryExitGenerator) FetchJSON(url string) ([]byte, error) {
 	return body, nil
 }
 
+// FetchBeaconConfig fetches the beacon chain configuration from the beacon node.
 func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 	log.Info("Fetching beacon config")
 
@@ -152,6 +158,7 @@ func (g *VoluntaryExitGenerator) FetchBeaconConfig() (*BeaconConfig, error) {
 	return config, nil
 }
 
+// Validate validates the beacon configuration.
 func (c *BeaconConfig) Validate() error {
 	if c.GenesisValidatorsRoot == "" {
 		return errors.New("genesis validators root is required")

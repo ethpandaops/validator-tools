@@ -2,7 +2,6 @@ package validator
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// VoluntaryExitGenerator generates voluntary exit messages for validators.
 type VoluntaryExitGenerator struct {
 	OutputDir             string
 	WithdrawalCredentials string
@@ -25,6 +25,7 @@ type VoluntaryExitGenerator struct {
 	CurrentKeystore       int32
 }
 
+// NewVoluntaryExitGenerator creates a new voluntary exit generator with the specified configuration.
 func NewVoluntaryExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL string, iterations, indexStart, indexOffset, numWorkers int) *VoluntaryExitGenerator {
 	log.Info("Creating new Generator")
 	log.Infof("Output dir: %s", outputDir)
@@ -52,6 +53,7 @@ func NewVoluntaryExitGenerator(outputDir, withdrawalCreds, passphrase, beaconURL
 	}
 }
 
+// SetTotalKeystores sets the total number of keystores to process with bounds checking.
 func (g *VoluntaryExitGenerator) SetTotalKeystores(total int) {
 	if total < 0 {
 		log.Warnf("Negative total keystores %d, setting to 0", total)
@@ -72,6 +74,7 @@ func (g *VoluntaryExitGenerator) SetTotalKeystores(total int) {
 	log.Infof("Total keystores to process: %d", g.TotalKeystores)
 }
 
+// GetValidatorStartIndex determines the starting validator index for exit generation.
 func (g *VoluntaryExitGenerator) GetValidatorStartIndex() (int, error) {
 	if g.IndexStart >= 0 {
 		return g.IndexStart + g.IndexOffset, nil
@@ -112,6 +115,7 @@ func (g *VoluntaryExitGenerator) GetValidatorStartIndex() (int, error) {
 	return maxIndex + g.IndexOffset, nil
 }
 
+// GenerateExits generates voluntary exit messages for a keystore file.
 func (g *VoluntaryExitGenerator) GenerateExits(keystorePath string, config *BeaconConfig, startIndex int) error {
 	atomic.AddInt32(&g.CurrentKeystore, 1)
 	keystoreNum := atomic.LoadInt32(&g.CurrentKeystore)
@@ -135,7 +139,7 @@ func (g *VoluntaryExitGenerator) GenerateExits(keystorePath string, config *Beac
 
 	log.Info("Reading pubkey from keystore")
 
-	keystoreData, err := os.ReadFile(absKeystorePath)
+	keystoreData, err := os.ReadFile(absKeystorePath) // #nosec G304 -- Path is validated by caller
 	if err != nil {
 		log.Errorf("Failed to read keystore file: %v", err)
 
@@ -155,7 +159,7 @@ func (g *VoluntaryExitGenerator) GenerateExits(keystorePath string, config *Beac
 	if keystoreJSON.Pubkey == "" {
 		log.Error("Empty or null pubkey in keystore")
 
-		return fmt.Errorf("empty or null pubkey in keystore: %s", absKeystorePath)
+		return errors.Wrapf(ErrEmptyPubkey, "keystore: %s", absKeystorePath)
 	}
 
 	log.Infof("Pubkey: %s", keystoreJSON.Pubkey)

@@ -16,7 +16,7 @@ import (
 func TestWorker(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
-	require.NoError(t, os.Mkdir(outputDir, 0o755))
+	require.NoError(t, os.Mkdir(outputDir, 0o750))
 
 	tests := []struct {
 		name        string
@@ -93,7 +93,7 @@ func TestWorker(t *testing.T) {
 
 			// Mock execCommand
 			origExecCommand := execCommand
-			execCommand = func(name string, args ...string) commander {
+			execCommand = func(_ string, _ ...string) commander {
 				return &mockCmd{
 					t:      t,
 					output: []byte(`{"test": "success"}`),
@@ -119,7 +119,7 @@ func TestWorker(t *testing.T) {
 	}
 }
 
-func TestReportProgress(t *testing.T) {
+func TestReportProgress(_ *testing.T) {
 	generator := &VoluntaryExitGenerator{
 		TotalKeystores: 2,
 		Iterations:     10,
