@@ -13,11 +13,12 @@ type commander interface {
 	CombinedOutput() ([]byte, error)
 }
 
+//nolint:gochecknoglobals // Used for dependency injection in tests
 var execCommand = func(name string, args ...string) commander {
 	return exec.Command(name, args...)
 }
 
-// runEthdoCommand executes the ethdo command for generating voluntary exits
+// runEthdoCommand executes the ethdo command for generating voluntary exits.
 func (g *VoluntaryExitGenerator) runEthdoCommand(keystorePath, outFile, workDir string, log *logrus.Entry) error {
 	log.Debug("Running ethdo command")
 	log.Debugf("Keystore path: %s", keystorePath)

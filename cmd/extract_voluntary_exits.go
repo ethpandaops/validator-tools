@@ -19,10 +19,11 @@ var (
 )
 
 var extractVoluntaryExitsCmd = &cobra.Command{
-	Use:   "voluntary_exits",
-	Short: "Extract voluntary exit messages",
-	Long:  `Extract voluntary exit messages for Ethereum validators.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Use:          "voluntary_exits",
+	Short:        "Extract voluntary exit messages",
+	Long:         `Extract voluntary exit messages for Ethereum validators.`,
+	SilenceUsage: true,
+	RunE: func(_ *cobra.Command, _ []string) error {
 		exits, err := validator.NewVoluntaryExits(extractExitsInput, extractExitsNetwork, extractExitsWithdrawalCreds, extractExitsPubkeys)
 		if err != nil {
 			return errors.Wrap(err, "failed to load exits")
@@ -48,7 +49,7 @@ var extractVoluntaryExitsCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to verify extracted exits")
 		}
 
-		fmt.Printf("✅ Successfully extracted %d sets of validator exits\n", len(exits.ExitsByPubkey))
+		fmt.Printf("✅ Successfully extracted %d sets of validator exits\n", len(exits.Metadata.FilesByPubkey))
 
 		return nil
 	},

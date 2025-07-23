@@ -12,11 +12,13 @@ import (
 	ethpb "github.com/prysmaticlabs/prysm/v5/proto/prysm/v1alpha1"
 )
 
+// Data represents deposit data with expected values for validation.
 type Data struct {
 	DepositData  []*ParsedData
 	ExpectedData *ExpectedData
 }
 
+// ExpectedData contains the expected values for deposit validation.
 type ExpectedData struct {
 	Network        string
 	Amount         uint64
@@ -24,11 +26,13 @@ type ExpectedData struct {
 	Count          int
 }
 
+// ParsedData contains parsed deposit data in different formats.
 type ParsedData struct {
 	Deposit *Deposit
 	PBData  *ethpb.Deposit_Data
 }
 
+// Deposit represents a validator deposit with all associated metadata.
 type Deposit struct {
 	PubKey                string `json:"pubkey"`
 	WithdrawalCredentials string `json:"withdrawal_credentials"`
@@ -41,8 +45,9 @@ type Deposit struct {
 	ForkVersion           string `json:"fork_version"`
 }
 
+// NewData creates a new Data instance by reading and parsing deposit data from a file.
 func NewData(path, expectedNetwork, expectedWithdrawalCred string, expectedAmount uint64, expectedCount int) (*Data, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- Path is validated by caller
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read deposit data file")
 	}
@@ -96,6 +101,7 @@ func NewData(path, expectedNetwork, expectedWithdrawalCred string, expectedAmoun
 	}, nil
 }
 
+// Validate checks if the deposit data matches the expected values.
 func (d *Data) Validate() error {
 	if d.ExpectedData.Count > 0 && len(d.DepositData) != d.ExpectedData.Count {
 		return errors.Errorf("count mismatch: expected %d, got %d", d.ExpectedData.Count, len(d.DepositData))
@@ -110,6 +116,7 @@ func (d *Data) Validate() error {
 	return nil
 }
 
+// Validate checks if the deposit matches the expected data.
 func (d *Deposit) Validate(expectedData *ExpectedData) error {
 	if expectedData.Network != "" && d.NetworkName != expectedData.Network {
 		return errors.Errorf("network mismatch: expected %s, got %s", expectedData.Network, d.NetworkName)
@@ -126,6 +133,7 @@ func (d *Deposit) Validate(expectedData *ExpectedData) error {
 	return nil
 }
 
+// Verify validates the cryptographic signatures of all deposits.
 func (d *Data) Verify() error {
 	for _, set := range d.DepositData {
 		forkVersion, err := hex.DecodeString(set.Deposit.ForkVersion)
@@ -146,6 +154,7 @@ func (d *Data) Verify() error {
 	return nil
 }
 
+// IsValidDepositSignature verifies if a deposit signature is valid for the given fork version.
 func IsValidDepositSignature(data *ethpb.Deposit_Data, forkVersion []byte) (bool, error) {
 	domain, err := signing.ComputeDomain(params.BeaconConfig().DomainDeposit, forkVersion, nil)
 	if err != nil {

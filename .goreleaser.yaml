@@ -98,6 +98,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+
 docker_manifests:
   - name_template: ethpandaops/{{ .ProjectName }}:{{ .Version }}
     image_templates:

@@ -4,6 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+//nolint:gochecknoglobals // Package-level logger, consider refactoring to pass via constructor
 var log *logrus.Logger
 
 func init() {
@@ -12,12 +13,12 @@ func init() {
 	log.SetLevel(logrus.InfoLevel)
 }
 
-// GetLogger returns the configured logger instance
+// GetLogger returns the configured logger instance.
 func GetLogger() *logrus.Logger {
 	return log
 }
 
-// SetLogLevel sets the logging level
+// SetLogLevel sets the logging level.
 func SetLogLevel(level string) error {
 	lvl, err := logrus.ParseLevel(level)
 	if err != nil {

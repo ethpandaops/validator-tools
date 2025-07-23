@@ -38,7 +38,11 @@ const testKeystorePath = "test/keystore.json"
 func TestRunEthdoCommand(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "ethdo-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Logf("Failed to remove temp dir: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name        string
@@ -59,7 +63,7 @@ func TestRunEthdoCommand(t *testing.T) {
 			mockOutput: []byte(`{"test": "success"}`),
 			checkOutput: func(t *testing.T, outFile string) {
 				t.Helper()
-				content, err := os.ReadFile(outFile)
+				content, err := os.ReadFile(outFile) // #nosec G304 -- Test file path
 				require.NoError(t, err)
 				assert.JSONEq(t, `{"test": "success"}`, string(content))
 			},
@@ -84,7 +88,7 @@ func TestRunEthdoCommand(t *testing.T) {
 			name: "output file write failure",
 			setup: func() (*VoluntaryExitGenerator, string, string, string) {
 				outFile := filepath.Join(tmpDir, "invalid-dir")
-				require.NoError(t, os.Mkdir(outFile, 0o755))
+				require.NoError(t, os.Mkdir(outFile, 0o750))
 
 				return &VoluntaryExitGenerator{
 					Passphrase: "testpass",
@@ -138,7 +142,11 @@ func TestRunEthdoCommand(t *testing.T) {
 func TestEthdoCommandRedaction(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "ethdo-redaction-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Logf("Failed to remove temp dir: %v", err)
+		}
+	}()
 
 	generator := &VoluntaryExitGenerator{
 		Passphrase: "super-secret-password",
@@ -157,7 +165,7 @@ func TestEthdoCommandRedaction(t *testing.T) {
 
 	origExecCommand := execCommand
 
-	execCommand = func(name string, args ...string) commander {
+	execCommand = func(_ string, _ ...string) commander {
 		return mock
 	}
 

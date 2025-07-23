@@ -37,13 +37,16 @@ validator-tools generate voluntary_exits [keystore_files...] \
 
 #### Verify Voluntary Exits
 
-Verify voluntary exit messages for Ethereum validators.
+Verify voluntary exit messages for Ethereum validators. The tool uses memory-optimized batch processing to handle large datasets efficiently.
 
 ```
 validator-tools verify voluntary_exits \
-    --path <PATH> # Path to directory containing exit files \
+    --input <PATH> # Path to directory containing exit files \
     --network <mainnet|hoodi|holesky> \
     --withdrawal-credentials <WITHDRAWAL_CREDENTIALS> \
-    --count <COUNT> # Number of exits that should have been generated
-    --pubkeys <PUBKEYS> # Expected validator pubkeys (comma-separated)
+    --count <COUNT> # Number of exits that should have been generated \
+    --pubkeys <PUBKEYS> # Expected validator pubkeys (comma-separated) \
+    --workers <COUNT> # Number of parallel workers (default: number of CPU cores)
 ```
+
+The verification processes exits in batches to optimize memory usage (>90% reduction for large datasets) while maintaining concurrent processing within each batch for optimal performance.
