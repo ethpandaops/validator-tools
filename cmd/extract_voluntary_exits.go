@@ -48,7 +48,7 @@ var extractVoluntaryExitsCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to verify extracted exits")
 		}
 
-		fmt.Printf("✅ Successfully extracted %d sets of validator exits\n", len(exits.ExitsByPubkey))
+		fmt.Printf("✅ Successfully extracted %d sets of validator exits\n", len(exits.Metadata.FilesByPubkey))
 
 		return nil
 	},

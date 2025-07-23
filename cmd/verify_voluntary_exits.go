@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -18,6 +19,7 @@ var (
 	verifyExitsPubkeys                 []string
 	verifyExitsSkipIndexMissmatchCheck bool
 	verifyExitsSkipMessage             bool
+	verifyExitsWorkers                 int
 )
 
 var verifyVoluntaryExitsCmd = &cobra.Command{
@@ -25,10 +27,17 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 	Short: "Verify voluntary exit messages",
 	Long:  `Verify voluntary exit messages for Ethereum validators.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if verifyExitsWorkers < 1 {
+			return errors.New("number of workers must be at least 1")
+		}
+
 		exits, err := validator.NewVoluntaryExits(verifyExitsInput, verifyExitsNetwork, verifyExitsWithdrawalCreds, verifyExitsPubkeys)
 		if err != nil {
 			return errors.Wrap(err, "failed to verify exits")
 		}
+
+		// Set batch size based on workers
+		exits.SetBatchSize(verifyExitsWorkers)
 
 		err = exits.ValidateCount(verifyExitsNumExits)
 		if err != nil {
@@ -41,6 +50,8 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 				return errors.Wrap(err, "failed to check exit indices")
 			}
 		}
+
+		log.Infof("Using %d workers for parallel processing", verifyExitsWorkers)
 
 		rsp, err := exits.Verify()
 		if err != nil {
@@ -58,13 +69,19 @@ var verifyVoluntaryExitsCmd = &cobra.Command{
 				"curl -H \"Content-Type: application/json\" http://localhost:5052/eth/v1/beacon/states/finalized/validators | jq -r '[.data[].index | tonumber] | max' \n\n")
 		}
 
-		fmt.Printf("✅ Successfully verified %d sets of validator exits\n", len(exits.ExitsByPubkey))
+		fmt.Printf("✅ Successfully verified %d sets of validator exits\n", len(exits.Metadata.FilesByPubkey))
 
 		return nil
 	},
 }
 
 func init() {
+	// Default to number of CPU threads if possible, otherwise use 1
+	defaultWorkers := runtime.NumCPU()
+	if defaultWorkers < 1 {
+		defaultWorkers = 1
+	}
+
 	verifyCmd.AddCommand(verifyVoluntaryExitsCmd)
 
 	verifyVoluntaryExitsCmd.Flags().StringVar(&verifyExitsInput, "input", "", "Path to directory containing exit files")
@@ -74,6 +91,7 @@ func init() {
 	verifyVoluntaryExitsCmd.Flags().StringSliceVar(&verifyExitsPubkeys, "pubkeys", []string{}, "Expected validator pubkeys (comma-separated)")
 	verifyVoluntaryExitsCmd.Flags().BoolVar(&verifyExitsSkipIndexMissmatchCheck, "skip-index-missmatch-check", false, "Skip validator index missmatch check")
 	verifyVoluntaryExitsCmd.Flags().BoolVar(&verifyExitsSkipMessage, "skip-check-message", false, "Skip check message")
+	verifyVoluntaryExitsCmd.Flags().IntVar(&verifyExitsWorkers, "workers", defaultWorkers, "Number of parallel workers (default: number of CPU cores)")
 
 	err := verifyVoluntaryExitsCmd.MarkFlagRequired("input")
 	if err != nil {
