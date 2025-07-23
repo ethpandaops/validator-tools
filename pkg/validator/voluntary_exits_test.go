@@ -965,6 +965,14 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 								"withdrawal_credentials": "0x0123456789abcdef0123456789abcdef01234567"
 							},
 							"status": "exited_slashed"
+						},
+						{
+							"index": "101",
+							"validator": {
+								"pubkey": "0x` + testPubkey2 + `",
+								"withdrawal_credentials": "0x0123456789abcdef0123456789abcdef01234567"
+							},
+							"status": "active_ongoing"
 						}
 					]
 				}`
@@ -990,6 +998,14 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 								"withdrawal_credentials": "0x0123456789abcdef0123456789abcdef01234567"
 							},
 							"status": "active_ongoing"
+						},
+						{
+							"index": "101",
+							"validator": {
+								"pubkey": "0x` + testPubkey2 + `",
+								"withdrawal_credentials": "0x0123456789abcdef0123456789abcdef01234567"
+							},
+							"status": "active_ongoing"
 						}
 					]
 				}`
@@ -1001,7 +1017,7 @@ func TestVoluntaryExitsExtract(t *testing.T) {
 				}
 			},
 			expectError:   true,
-			errorContains: "not found in beacon state",
+			errorContains: "was not processed",
 		},
 	}
 
@@ -1141,6 +1157,7 @@ func extractWithMock(e *VoluntaryExits, beaconURL, outputDir string, mockGen *mo
 		}
 
 		// For each exit file for this validator
+		filesCopied := false
 		for _, exit := range validatorExits.Exits {
 			expectedIndex := fmt.Sprintf("%d", exit.PBExit.Exit.ValidatorIndex)
 
@@ -1158,9 +1175,12 @@ func extractWithMock(e *VoluntaryExits, beaconURL, outputDir string, mockGen *mo
 			if err := copyFile(exit.Path, destFilePath); err != nil {
 				return err
 			}
+			filesCopied = true
 		}
 
-		processedValidators[pubkey] = true
+		if filesCopied {
+			processedValidators[pubkey] = true
+		}
 	}
 
 	// Verify all expected validators were processed
