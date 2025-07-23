@@ -1,13 +1,16 @@
 package validator
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/prysmaticlabs/prysm/v5/beacon-chain/core/blocks"
 	"github.com/prysmaticlabs/prysm/v5/beacon-chain/state"
@@ -16,6 +19,7 @@ import (
 	"github.com/prysmaticlabs/prysm/v5/consensus-types/primitives"
 	ethpb "github.com/prysmaticlabs/prysm/v5/proto/prysm/v1alpha1"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 // VoluntaryExits represents a collection of voluntary exits for validators
@@ -51,6 +55,27 @@ type VerifyResponse struct {
 	LastIndex  uint64 `json:"last_index"`
 }
 
+// verifyWorkerInput represents work for a verification worker
+type verifyWorkerInput struct {
+	pubkey         string
+	validatorExits *ValidatorExits
+}
+
+// verifyWorkerResult represents the result from a verification worker
+type verifyWorkerResult struct {
+	pubkey        string
+	verifiedCount int
+	err           error
+}
+
+// sharedVerifyState holds state shared between verification workers
+type sharedVerifyState struct {
+	mu          sync.Mutex
+	initialized bool
+	firstIndex  primitives.ValidatorIndex
+	lastIndex   primitives.ValidatorIndex
+}
+
 // NewVoluntaryExits creates a new VoluntaryExits instance
 func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []string) (*VoluntaryExits, error) {
 	if err := setNetwork(network); err != nil {
@@ -61,6 +86,8 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []
 
 	exitsByPubkey := make(map[string]*ValidatorExits)
 
+	log.WithField("path", path).Info("Starting to read exit files from directory")
+
 	files, err := os.ReadDir(path)
 	if err != nil {
 		log.WithError(err).WithField("path", path).Error("Failed to read directory")
@@ -68,12 +95,17 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []
 		return nil, err
 	}
 
+	log.WithField("file_count", len(files)).Info("Found files in directory")
+
 	// Create a map of expected pubkeys for quick lookup
 	expectedPubkeyMap := make(map[string]bool)
 	for _, pubkey := range expectedPubkeys {
 		expectedPubkeyMap[strings.TrimPrefix(pubkey, "0x")] = true
 	}
 
+	log.WithField("expected_pubkeys", len(expectedPubkeys)).Info("Processing exit files")
+
+	processedFiles := 0
 	for _, file := range files {
 		if !isExitFile(file) {
 			continue
@@ -81,12 +113,16 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []
 
 		filePath := filepath.Join(path, file.Name())
 
+		log.WithField("file", file.Name()).Debug("Reading exit file")
+
 		vexit, rErr := readExitFile(filePath)
 		if rErr != nil {
 			log.WithError(rErr).WithField("file", file.Name()).Warn("Skipping file")
 
 			continue
 		}
+
+		processedFiles++
 
 		pubkeyStr := hex.EncodeToString(vexit.Pubkey)
 
@@ -103,6 +139,11 @@ func NewVoluntaryExits(path, network, withdrawalCreds string, expectedPubkeys []
 
 		exitsByPubkey[pubkeyStr].Exits = append(exitsByPubkey[pubkeyStr].Exits, vexit)
 	}
+
+	log.WithFields(logrus.Fields{
+		"processed_files": processedFiles,
+		"unique_pubkeys":  len(exitsByPubkey),
+	}).Info("Finished reading exit files")
 
 	// Check if all expected pubkeys were found
 	for pubkey := range expectedPubkeyMap {
@@ -309,60 +350,161 @@ func readExitFile(filePath string) (*VoluntaryExit, error) {
 	}, nil
 }
 
-// Verify verifies all voluntary exits
-func (e *VoluntaryExits) Verify() (*VerifyResponse, error) {
-	var firstIndex, lastIndex primitives.ValidatorIndex
+// verifyPubkeyExits verifies all exits for a single pubkey
+func (e *VoluntaryExits) verifyPubkeyExits(
+	ctx context.Context,
+	pubkey string,
+	validatorExits *ValidatorExits,
+	sharedState *sharedVerifyState,
+) (int, error) {
+	log := log.WithField("pubkey", pubkey)
+	verifiedCount := 0
 
-	var initialized bool
+	log.WithField("exit_count", len(validatorExits.Exits)).Info("Starting verification for pubkey")
 
-	for pubkey, validatorExits := range e.ExitsByPubkey {
-		log := log.WithField("pubkey", pubkey)
-		verifiedCount := 0
-
-		if !initialized && len(validatorExits.Exits) > 0 {
-			firstIndex = validatorExits.Exits[0].PBExit.Exit.ValidatorIndex
-			lastIndex = validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex
-			initialized = true
+	// Update shared first/last index with synchronization
+	if len(validatorExits.Exits) > 0 {
+		sharedState.mu.Lock()
+		if !sharedState.initialized {
+			sharedState.firstIndex = validatorExits.Exits[0].PBExit.Exit.ValidatorIndex
+			sharedState.lastIndex = validatorExits.Exits[len(validatorExits.Exits)-1].PBExit.Exit.ValidatorIndex
+			sharedState.initialized = true
 		}
-
-		for _, exit := range validatorExits.Exits {
-			if err := validatorExits.State.AppendValidator(&ethpb.Validator{
-				PublicKey:             exit.Pubkey,
-				WithdrawalCredentials: e.WithdrawalCreds,
-				ExitEpoch:             params.BeaconConfig().FarFutureEpoch,
-			}); err != nil {
-				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to append validator")
-
-				return nil, err
-			}
-
-			validator, err := validatorExits.State.ValidatorAtIndexReadOnly(exit.PBExit.Exit.ValidatorIndex)
-			if err != nil {
-				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to get validator")
-
-				return nil, err
-			}
-
-			if err := blocks.VerifyExitAndSignature(validator, validatorExits.State, exit.PBExit); err != nil {
-				log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to verify exit and signature")
-
-				return nil, err
-			}
-
-			verifiedCount++
-
-			log.WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Debug("Exit verified")
-		}
-
-		log.WithFields(logrus.Fields{
-			"verified": verifiedCount,
-			"total":    len(validatorExits.Exits),
-		}).Info("Exits verified")
+		sharedState.mu.Unlock()
 	}
 
+	// Verify each exit sequentially for this pubkey
+	for _, exit := range validatorExits.Exits {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return verifiedCount, ctx.Err()
+		default:
+		}
+
+		if err := validatorExits.State.AppendValidator(&ethpb.Validator{
+			PublicKey:             exit.Pubkey,
+			WithdrawalCredentials: e.WithdrawalCreds,
+			ExitEpoch:             params.BeaconConfig().FarFutureEpoch,
+		}); err != nil {
+			log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to append validator")
+			return verifiedCount, err
+		}
+
+		validator, err := validatorExits.State.ValidatorAtIndexReadOnly(exit.PBExit.Exit.ValidatorIndex)
+		if err != nil {
+			log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to get validator")
+			return verifiedCount, err
+		}
+
+		if err := blocks.VerifyExitAndSignature(validator, validatorExits.State, exit.PBExit); err != nil {
+			log.WithError(err).WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Error("Failed to verify exit and signature")
+			return verifiedCount, err
+		}
+
+		verifiedCount++
+		log.WithField("validator_index", exit.PBExit.Exit.ValidatorIndex).Debug("Exit verified")
+	}
+
+	log.WithFields(logrus.Fields{
+		"verified": verifiedCount,
+		"total":    len(validatorExits.Exits),
+	}).Info("Completed verification for pubkey")
+
+	return verifiedCount, nil
+}
+
+// Verify verifies all voluntary exits using concurrent workers
+func (e *VoluntaryExits) Verify() (*VerifyResponse, error) {
+	// Determine number of workers based on CPU count
+	numWorkers := runtime.NumCPU()
+	if numWorkers > len(e.ExitsByPubkey) {
+		numWorkers = len(e.ExitsByPubkey)
+	}
+
+	log.WithFields(logrus.Fields{
+		"workers": numWorkers,
+		"pubkeys": len(e.ExitsByPubkey),
+	}).Info("Starting verification with concurrent workers")
+
+	// Initialize shared state
+	sharedState := &sharedVerifyState{}
+
+	// Create work channel
+	workCh := make(chan verifyWorkerInput, len(e.ExitsByPubkey))
+
+	// Queue all work
+	for pubkey, validatorExits := range e.ExitsByPubkey {
+		workCh <- verifyWorkerInput{
+			pubkey:         pubkey,
+			validatorExits: validatorExits,
+		}
+	}
+	close(workCh)
+
+	// Create error group with context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Results channel for collecting verification counts
+	resultsCh := make(chan verifyWorkerResult, len(e.ExitsByPubkey))
+
+	// Start workers
+	for i := 0; i < numWorkers; i++ {
+		workerID := i
+		g.Go(func() error {
+			log.WithField("worker_id", workerID).Debug("Worker started")
+			for work := range workCh {
+				log.WithFields(logrus.Fields{
+					"worker_id": workerID,
+					"pubkey":    work.pubkey,
+				}).Debug("Worker processing pubkey")
+
+				verifiedCount, err := e.verifyPubkeyExits(ctx, work.pubkey, work.validatorExits, sharedState)
+
+				resultsCh <- verifyWorkerResult{
+					pubkey:        work.pubkey,
+					verifiedCount: verifiedCount,
+					err:           err,
+				}
+
+				if err != nil {
+					cancel() // Cancel all workers on error
+					return err
+				}
+			}
+			log.WithField("worker_id", workerID).Debug("Worker completed")
+			return nil
+		})
+	}
+
+	// Wait for all workers in a separate goroutine
+	go func() {
+		g.Wait()
+		close(resultsCh)
+	}()
+
+	// Collect results
+	totalVerified := 0
+	for result := range resultsCh {
+		if result.err != nil {
+			return nil, result.err
+		}
+		totalVerified += result.verifiedCount
+	}
+
+	// Wait for all workers to complete
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	log.WithField("total_verified", totalVerified).Info("All exits verified successfully")
+
 	return &VerifyResponse{
-		FirstIndex: uint64(firstIndex),
-		LastIndex:  uint64(lastIndex),
+		FirstIndex: uint64(sharedState.firstIndex),
+		LastIndex:  uint64(sharedState.lastIndex),
 	}, nil
 }
 
